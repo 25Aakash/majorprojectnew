@@ -1,0 +1,98 @@
+{
+  "educatorEmail": "educator@neurolearn.com",
+  "courses": [
+    {
+      "title": "Introduction to Algebra",
+      "description": "Learn the fundamentals of algebra with visual and interactive examples designed for neurodiverse learners.",
+      "category": "math",
+      "difficulty": "beginner",
+      "thumbnail": "https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=800",
+      "targetAudience": ["ADHD", "Dyslexia", "General"],
+      "accessibilityFeatures": ["Visual Learning Support", "Break Reminders", "Adjustable Text Size"],
+      "isPublished": true,
+      "lessons": [
+        {
+          "title": "What is Algebra?",
+          "content": "# What is Algebra? 🧮\n\nAlgebra is like a puzzle where we use letters to represent numbers we don't know yet!\n\n## The Big Idea\n\nImagine you have a mystery box 📦. You don't know what's inside, but we call it **x**.\n\n## Example\n\nIf I say: **x + 3 = 5**\n\nThis means: \"What number plus 3 equals 5?\"\n\n🎯 **Answer:** x = 2 (because 2 + 3 = 5)\n\n## Why Learn Algebra?\n\n1. 🎮 Video game designers use it\n2. 🏗️ Architects need it for buildings\n3. 💰 Managing money uses algebra\n\n## Let's Try!\n\nPractice finding x in simple equations. Take your time - there's no rush!",
+          "type": "text",
+          "duration": 10,
+          "quiz": [
+            {
+              "question": "If x + 2 = 6, what is x?",
+              "options": ["2", "4", "6", "8"],
+              "correctAnswer": 1,
+              "explanation": "If we need x + 2 = 6, then x must be 4 because 4 + 2 = 6"
+            },
+            {
+              "question": "What does the letter 'x' represent in algebra?",
+              "options": ["Always the number 10", "A mystery number we need to find", "The letter X", "Nothing"],
+              "correctAnswer": 1,
+              "explanation": "In algebra, x (or any letter) represents an unknown number that we're trying to find."
+            }
+          ],
+          "learningObjectives": [
+            "Understand what algebra means",
+            "Recognize that letters can represent numbers",
+            "Solve simple one-step equations"
+          ]
+        },
+        {
+          "title": "Variables and Constants",
+          "content": "# Variables and Constants 📊\n\n## What's a Variable?\n\nA **variable** is a letter that can be different numbers.\n\nThink of it like a container that can hold different things:\n- Today x might equal 5\n- Tomorrow x might equal 10\n\n## What's a Constant?\n\nA **constant** is a number that stays the same.\n\n**Examples:**\n- The number 7 is always 7\n- The number 100 is always 100\n\n## Spotting Them\n\nIn the expression: **3x + 5**\n- **x** is the variable (can change)\n- **3** and **5** are constants (always the same)\n\n## 🎯 Remember\n\n| Type | What it is | Example |\n|------|------------|--------|\n| Variable | Changes | x, y, z |\n| Constant | Stays same | 1, 2, 3 |\n\n## Practice Time!\n\nLook around your room. What things change (like temperature) and what stays the same (like how many windows)?",
+          "type": "text",
+          "duration": 12,
+          "quiz": [
+            {
+              "question": "In the expression 5x + 2, which is the variable?",
+              "options": ["5", "x", "2", "+"],
+              "correctAnswer": 1,
+              "explanation": "x is the variable because it represents an unknown number that can change."
+            },
+            {
+              "question": "What is a constant?",
+              "options": ["A letter that changes", "A number that stays the same", "A type of equation", "A math symbol"],
+              "correctAnswer": 1,
+              "explanation": "A constant is a fixed number that doesn't change, like 5 or 100."
+            }
+          ],
+          "learningObjectives": [
+            "Define what a variable is",
+            "Define what a constant is",
+            "Identify variables and constants in expressions"
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Reading Comprehension Strategies",
+      "description": "Learn effective strategies to understand and remember what you read, with techniques specifically designed for different learning styles.",
+      "category": "reading",
+      "difficulty": "beginner",
+      "thumbnail": "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=800",
+      "targetAudience": ["Dyslexia", "ADHD", "General"],
+      "accessibilityFeatures": ["Text-to-Speech", "Visual Learning Support", "Reduced Motion"],
+      "isPublished": true,
+      "lessons": [
+        {
+          "title": "The Preview Strategy",
+          "content": "# The Preview Strategy 👀\n\nBefore reading a book or article, **preview** it first!\n\n## What Does Preview Mean?\n\nPreviewing is like watching a movie trailer before the full movie. You get an idea of what's coming!\n\n## How to Preview\n\n### 1. Look at the Title 📌\nWhat does it tell you about the topic?\n\n### 2. Check the Pictures 🖼️\nImages give clues about the content.\n\n### 3. Read the Headings 📋\nHeadings are like mini-titles that organize information.\n\n### 4. Notice Bold Words ✨\nBold words are usually important vocabulary.\n\n## Why Preview?\n\n- Helps your brain prepare\n- Makes reading easier\n- Improves understanding\n- Helps you remember better\n\n## 🎯 Try It!\n\nBefore reading your next book, spend 2 minutes previewing. It makes a big difference!",
+          "type": "text",
+          "duration": 8,
+          "quiz": [
+            {
+              "question": "What should you look at when previewing a text?",
+              "options": ["Only the first word", "Title, pictures, and headings", "Just the last page", "Nothing"],
+              "correctAnswer": 1,
+              "explanation": "When previewing, look at the title, pictures, headings, and bold words to get an idea of what you'll read."
+            }
+          ],
+          "learningObjectives": [
+            "Understand what previewing means",
+            "Know the steps to preview a text",
+            "Recognize why previewing helps reading"
+          ]
+        }
+      ]
+    }
+  ]
+}

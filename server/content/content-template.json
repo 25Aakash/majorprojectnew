@@ -1,0 +1,123 @@
+{
+  "educatorEmail": "educator@neurolearn.com",
+  "courses": [
+    {
+      "title": "Your Course Title Here",
+      "description": "A brief, clear description of what students will learn.",
+      "category": "math",
+      "difficulty": "beginner",
+      "thumbnail": "https://images.unsplash.com/photo-XXXXX?w=800",
+      "targetAudience": ["ADHD", "Dyslexia", "General"],
+      "accessibilityFeatures": [
+        "Visual Learning Support",
+        "Text-to-Speech",
+        "Break Reminders",
+        "Adjustable Text Size"
+      ],
+      "isPublished": true,
+      "lessons": [
+        {
+          "title": "Lesson 1: Introduction",
+          "content": "# Welcome! 👋\n\nThis lesson will teach you [topic].\n\n## What You'll Learn\n\n- Point 1\n- Point 2\n- Point 3\n\n## The Big Idea 💡\n\n[Explain the main concept in simple terms]\n\n## Example\n\n[Show a clear, visual example]\n\n## Let's Practice!\n\n[Interactive element or exercise]\n\n---\n\n🎯 **Key Takeaway:** [One sentence summary]",
+          "type": "text",
+          "duration": 10,
+          "quiz": [
+            {
+              "question": "What is [concept]?",
+              "options": [
+                "Wrong answer A",
+                "Correct answer",
+                "Wrong answer B",
+                "Wrong answer C"
+              ],
+              "correctAnswer": 1,
+              "explanation": "The correct answer is [X] because [reason]."
+            },
+            {
+              "question": "True or False: [statement]",
+              "options": ["True", "False"],
+              "correctAnswer": 0,
+              "explanation": "This is true because [reason]."
+            }
+          ],
+          "learningObjectives": [
+            "Understand [concept 1]",
+            "Be able to [skill 1]",
+            "Recognize [pattern 1]"
+          ]
+        },
+        {
+          "title": "Lesson 2: Going Deeper",
+          "content": "# Building on What We Learned 🏗️\n\n## Quick Review\n\nIn the last lesson, we learned:\n- [Point 1]\n- [Point 2]\n\n## New Concept: [Topic]\n\n[Explanation with visual aids]\n\n### Step-by-Step Guide\n\n1. **Step 1:** [Action]\n2. **Step 2:** [Action]\n3. **Step 3:** [Action]\n\n### 🎯 Remember\n\n| Term | Meaning |\n|------|--------|\n| [Term 1] | [Definition] |\n| [Term 2] | [Definition] |\n\n## Practice Time!\n\nTry this exercise:\n\n[Interactive element]",
+          "type": "text",
+          "duration": 12,
+          "quiz": [
+            {
+              "question": "Which of these is correct?",
+              "options": [
+                "Option A",
+                "Option B",
+                "Option C",
+                "Option D"
+              ],
+              "correctAnswer": 2,
+              "explanation": "Option C is correct because [reason]."
+            }
+          ],
+          "learningObjectives": [
+            "Apply [concept] to new situations",
+            "Solve [type of problem]"
+          ]
+        },
+        {
+          "title": "Lesson 3: Video Lesson",
+          "content": "# Watch and Learn 🎬\n\nThis video explains [topic] with animations and examples.\n\n[VIDEO CONTENT GOES HERE]\n\n## Video Summary\n\nKey points from the video:\n\n1. [Point 1]\n2. [Point 2]\n3. [Point 3]\n\n## Transcript\n\n[Full transcript for accessibility]\n\n## Reflection Questions\n\n- What surprised you?\n- How can you use this?\n- What questions do you have?",
+          "type": "video",
+          "duration": 8,
+          "videoUrl": "https://www.youtube.com/embed/XXXXX",
+          "quiz": [
+            {
+              "question": "In the video, what was the main point about [topic]?",
+              "options": [
+                "Option A",
+                "Option B - Correct",
+                "Option C",
+                "Option D"
+              ],
+              "correctAnswer": 1,
+              "explanation": "The video emphasized that [reason]."
+            }
+          ],
+          "learningObjectives": [
+            "Watch and comprehend visual explanation",
+            "Connect video content to previous lessons"
+          ]
+        },
+        {
+          "title": "Lesson 4: Interactive Practice",
+          "content": "# Hands-On Learning 🖐️\n\n## Interactive Exercise\n\nTry this interactive activity to practice what you've learned.\n\n[INTERACTIVE COMPONENT]\n\n## Tips for Success\n\n✅ Take your time\n✅ It's okay to make mistakes\n✅ Try different approaches\n✅ Ask for help if stuck\n\n## Challenge Mode 🏆\n\nReady for a challenge? Try these:\n\n1. [Challenge 1]\n2. [Challenge 2]\n3. [Challenge 3]\n\n## You Did It! 🎉\n\nGreat job completing this lesson!",
+          "type": "interactive",
+          "duration": 15,
+          "quiz": [
+            {
+              "question": "What strategy worked best for you in the interactive exercise?",
+              "options": [
+                "Trial and error",
+                "Step-by-step approach",
+                "Visual patterns",
+                "Working backwards"
+              ],
+              "correctAnswer": 1,
+              "explanation": "All strategies are valid! The step-by-step approach is often most reliable for beginners."
+            }
+          ],
+          "learningObjectives": [
+            "Apply learned concepts in practice",
+            "Develop problem-solving strategies",
+            "Build confidence through hands-on experience"
+          ]
+        }
+      ]
+    }
+  ]
+}

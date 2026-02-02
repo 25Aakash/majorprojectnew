@@ -1,0 +1,174 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* OpenDyslexic font face for dyslexia-friendly mode */
+@font-face {
+  font-family: 'OpenDyslexic';
+  src: url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/woff/OpenDyslexic-Regular.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'OpenDyslexic';
+  src: url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/woff/OpenDyslexic-Bold.woff') format('woff');
+  font-weight: bold;
+  font-style: normal;
+}
+
+/* Base styles with accessibility in mind */
+@layer base {
+  :root {
+    --focus-ring-color: #3b82f6;
+    --focus-ring-offset: 2px;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Respect user preference for reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  /* Skip to main content link for screen readers */
+  .skip-link {
+    @apply absolute left-0 top-0 -translate-y-full bg-primary-600 text-white px-4 py-2 z-50 focus:translate-y-0 transition-transform;
+  }
+
+  /* Enhanced focus styles for accessibility */
+  *:focus-visible {
+    @apply outline-none ring-2 ring-primary-500 ring-offset-2;
+  }
+
+  /* High contrast mode adjustments */
+  .high-contrast {
+    --focus-ring-color: #000000;
+  }
+
+  .high-contrast *:focus-visible {
+    @apply ring-black ring-offset-4;
+  }
+}
+
+@layer components {
+  /* Accessible button base */
+  .btn {
+    @apply inline-flex items-center justify-center px-4 py-2 rounded-lg font-medium transition-all duration-200;
+    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
+    @apply disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-primary {
+    @apply btn bg-primary-600 text-white hover:bg-primary-700 focus-visible:ring-primary-500;
+  }
+
+  .btn-secondary {
+    @apply btn bg-gray-100 text-gray-900 hover:bg-gray-200 focus-visible:ring-gray-500;
+  }
+
+  .btn-calm {
+    @apply btn bg-calm-400 text-white hover:bg-calm-500 focus-visible:ring-calm-500;
+  }
+
+  .btn-accent {
+    @apply btn bg-accent-500 text-white hover:bg-accent-600 focus-visible:ring-accent-500;
+  }
+
+  /* Card component */
+  .card {
+    @apply bg-white rounded-xl shadow-md p-6 transition-shadow hover:shadow-lg;
+  }
+
+  .dark .card {
+    @apply bg-gray-800 text-white;
+  }
+
+  /* Form inputs with accessibility */
+  .input {
+    @apply w-full px-4 py-3 rounded-lg border border-gray-300 transition-colors;
+    @apply focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent;
+    @apply placeholder:text-gray-400;
+  }
+
+  .dark .input {
+    @apply bg-gray-700 border-gray-600 text-white placeholder:text-gray-400;
+  }
+
+  /* Progress bar */
+  .progress-bar {
+    @apply h-3 bg-gray-200 rounded-full overflow-hidden;
+  }
+
+  .progress-bar-fill {
+    @apply h-full bg-primary-500 transition-all duration-500 ease-out;
+  }
+
+  /* Focus mode overlay */
+  .focus-mode-active {
+    @apply fixed inset-0 bg-black/10 pointer-events-none z-40;
+  }
+}
+
+@layer utilities {
+  /* Line height utilities for readability */
+  .line-height-relaxed {
+    line-height: 1.8;
+  }
+
+  .line-height-loose {
+    line-height: 2.2;
+  }
+
+  /* Letter spacing for dyslexia-friendly text */
+  .letter-spacing-wide {
+    letter-spacing: 0.05em;
+  }
+
+  /* Word spacing */
+  .word-spacing-wide {
+    word-spacing: 0.1em;
+  }
+
+  /* Sepia theme */
+  .theme-sepia {
+    @apply bg-sepia-50 text-gray-900;
+  }
+
+  /* Animation pause utility */
+  .animation-paused {
+    animation-play-state: paused;
+  }
+}
+
+/* Accessibility font sizes */
+.font-size-small {
+  font-size: 0.875rem;
+}
+
+.font-size-medium {
+  font-size: 1rem;
+}
+
+.font-size-large {
+  font-size: 1.25rem;
+}
+
+.font-size-extra-large {
+  font-size: 1.5rem;
+}
+
+/* Dyslexia-friendly mode */
+.dyslexia-friendly {
+  font-family: 'OpenDyslexic', 'Comic Sans MS', sans-serif !important;
+  letter-spacing: 0.05em;
+  word-spacing: 0.1em;
+  line-height: 1.8;
+}
