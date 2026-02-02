@@ -11,10 +11,19 @@
 import mongoose from 'mongoose';
 import * as fs from 'fs';
 import * as path from 'path';
+import dotenv from 'dotenv';
 import { Course, Lesson } from '../models/Course.model';
 import { User } from '../models/User.model';
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://aakashkhandelwal2225:myPass1234@cluster0.arqgg2a.mongodb.net/neurolearn?retryWrites=true&w=majority';
+// Load environment variables
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+
+if (!process.env.MONGODB_URI) {
+  console.error('❌ MONGODB_URI is not defined in environment variables');
+  process.exit(1);
+}
+
+const MONGODB_URI: string = process.env.MONGODB_URI;
 
 interface ContentData {
   educatorEmail: string;
