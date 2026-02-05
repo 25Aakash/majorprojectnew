@@ -45,8 +45,15 @@ interface Course {
 
 interface Progress {
   overallProgress: number
-  completedLessons: string[]
-  currentLesson: string
+  completedLessons: string[] | { _id: string }[]
+  currentLesson: string | { _id: string }
+}
+
+// Helper to extract lesson ID from either string or populated object
+const getLessonId = (lesson: string | { _id: string } | undefined): string | undefined => {
+  if (!lesson) return undefined
+  if (typeof lesson === 'string') return lesson
+  return lesson._id
 }
 
 export default function CourseDetail() {
@@ -65,12 +72,10 @@ export default function CourseDetail() {
         setCourse(response.data)
 
         if (isAuthenticated) {
-          try {
-            const progressRes = await api.get(`/progress/course/${id}`)
-            setProgress(progressRes.data)
-          } catch {
-            // Not enrolled yet
-          }
+          // Only try to fetch progress - 404 means not enrolled yet
+          api.get(`/progress/course/${id}`)
+            .then(progressRes => setProgress(progressRes.data))
+            .catch(() => { /* Not enrolled yet - this is expected */ })
         }
       } catch (error) {
         console.error('Error fetching course:', error)
@@ -218,8 +223,10 @@ export default function CourseDetail() {
 
               <div className="space-y-3">
                 {course.lessons.map((lesson, index) => {
-                  const isCompleted = progress?.completedLessons?.includes(lesson._id)
-                  const isCurrent = progress?.currentLesson === lesson._id
+                  const isCompleted = progress?.completedLessons?.some(
+                    (l) => (typeof l === 'string' ? l : l._id) === lesson._id
+                  )
+                  const isCurrent = getLessonId(progress?.currentLesson) === lesson._id
 
                   return (
                     <div
@@ -333,7 +340,7 @@ export default function CourseDetail() {
               {/* CTA Button */}
               {isEnrolled ? (
                 <Link
-                  to={`/learn/${course._id}/${progress?.currentLesson || course.lessons[0]?._id}`}
+                  to={`/learn/${course._id}/${getLessonId(progress?.currentLesson) || course.lessons[0]?._id}`}
                   className="btn-primary w-full justify-center text-lg py-3"
                 >
                   <PlayIcon className="h-5 w-5 mr-2" />

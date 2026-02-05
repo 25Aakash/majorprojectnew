@@ -13,6 +13,8 @@ import courseRoutes from './routes/course.routes';
 import progressRoutes from './routes/progress.routes';
 import adaptiveRoutes from './routes/adaptive.routes';
 import configRoutes from './routes/config.routes';
+import adaptiveLearningRoutes from './routes/adaptive-learning.routes';
+import biometricRoutes from './routes/biometric.routes';
 
 dotenv.config();
 
@@ -28,15 +30,19 @@ app.use(morgan('dev'));
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/user', userRoutes); // Also mount at singular for frontend compatibility
 app.use('/api/courses', courseRoutes);
 app.use('/api/progress', progressRoutes);
 app.use('/api/adaptive', adaptiveRoutes);
+app.use('/api/adaptive-learning', adaptiveLearningRoutes);
+app.use('/api/biometric', biometricRoutes);
 app.use('/api/config', configRoutes);
 
 // AI Service proxy routes
 app.post('/api/ai/*', async (req, res) => {
   try {
-    const aiPath = req.path.replace('/api', '');
+    // Remove '/api/ai' prefix and forward to AI service's /api path
+    const aiPath = req.path.replace('/api/ai', '');
     const response = await axios.post(`${AI_SERVICE_URL}/api${aiPath}`, req.body);
     res.json(response.data);
   } catch (error: unknown) {
@@ -51,7 +57,8 @@ app.post('/api/ai/*', async (req, res) => {
 
 app.get('/api/ai/*', async (req, res) => {
   try {
-    const aiPath = req.path.replace('/api', '');
+    // Remove '/api/ai' prefix and forward to AI service's /api path
+    const aiPath = req.path.replace('/api/ai', '');
     const response = await axios.get(`${AI_SERVICE_URL}/api${aiPath}`, { params: req.query });
     res.json(response.data);
   } catch (error: unknown) {

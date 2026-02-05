@@ -4,6 +4,8 @@ import { motion } from 'framer-motion'
 import { useAuthStore } from '../stores/authStore'
 import api from '../services/api'
 import AIRecommendations from '../components/AIRecommendations'
+import AdaptiveInsights from '../components/dashboard/AdaptiveInsights'
+import OnboardingProgress from '../components/OnboardingProgress'
 import {
   AcademicCapIcon,
   FireIcon,
@@ -200,6 +202,9 @@ export default function Dashboard() {
         </motion.div>
       )}
 
+      {/* Onboarding Progress - Show during first 7 days */}
+      <OnboardingProgress />
+
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <motion.div
@@ -273,7 +278,7 @@ export default function Dashboard() {
 
           {progress.length > 0 ? (
             <div className="space-y-4">
-              {progress.map((item, index) => (
+              {progress.filter(item => item.courseId).map((item, index) => (
                 <motion.div
                   key={item._id}
                   initial={{ opacity: 0, x: -20 }}
@@ -287,7 +292,7 @@ export default function Dashboard() {
                     </div>
                     <div className="flex-1">
                       <h3 className="font-semibold text-gray-900 dark:text-white">
-                        {item.courseId.title}
+                        {item.courseId?.title || 'Unknown Course'}
                       </h3>
                       <p className="text-sm text-gray-500 dark:text-gray-400">
                         {item.currentLesson?.title || 'Start learning'}
@@ -305,7 +310,7 @@ export default function Dashboard() {
                       </div>
                     </div>
                     <Link
-                      to={`/courses/${item.courseId._id}`}
+                      to={`/courses/${item.courseId?._id}`}
                       className="btn-primary"
                     >
                       Continue
@@ -412,6 +417,16 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Adaptive Learning Insights - Full Width Section */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.5 }}
+        className="mt-8"
+      >
+        <AdaptiveInsights />
+      </motion.div>
     </div>
   )
 }

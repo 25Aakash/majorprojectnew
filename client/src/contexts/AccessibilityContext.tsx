@@ -1,5 +1,6 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react'
 import api from '../services/api'
+import { useAuthStore } from '../stores/authStore'
 
 export interface AccessibilitySettings {
   fontSize: 'small' | 'medium' | 'large' | 'extra-large'
@@ -32,50 +33,86 @@ const defaultSettings: AccessibilitySettings = {
 const AccessibilityContext = createContext<AccessibilityContextType | undefined>(undefined)
 
 export function AccessibilityProvider({ children }: { children: ReactNode }) {
-  const [settings, setSettings] = useState<AccessibilitySettings>(defaultSettings)
+  const [settings, setSettings] = useState<AccessibilitySettings>(() => {
+    // Initialize from localStorage synchronously to prevent flash
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('neurolearn-accessibility')
+      if (saved) {
+        try {
+          return { ...defaultSettings, ...JSON.parse(saved) }
+        } catch {
+          return defaultSettings
+        }
+      }
+    }
+    return defaultSettings
+  })
+  
+  // Track if initial load is completed
+  const isInitializedRef = useRef(false)
+  
+  // Get auth state
+  const isAuthenticated = useAuthStore(state => state.isAuthenticated)
 
   // Speech synthesis
   const [synth] = useState(() => typeof window !== 'undefined' ? window.speechSynthesis : null)
 
-
-  // Load settings from backend on mount
+  // Apply reduced motion preference on mount (before fetch)
   useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+    if (mediaQuery.matches) {
+      setSettings(prev => {
+        if (!prev.reducedMotion) {
+          return { ...prev, reducedMotion: true }
+        }
+        return prev
+      })
+    }
+    // Mark as initialized after checking reduced motion
+    isInitializedRef.current = true
+  }, [])
+
+  // Load settings from backend when authenticated
+  useEffect(() => {
+    if (!isAuthenticated) return
+    
+    let cancelled = false
+    
     async function fetchSettings() {
       try {
         const res = await api.get('/user/accessibility-preferences')
-        if (res.data?.preferences) {
-          setSettings({ ...defaultSettings, ...res.data.preferences })
+        if (!cancelled && res.data?.preferences) {
+          setSettings(prev => ({ ...prev, ...res.data.preferences }))
         }
       } catch {
-        // fallback to localStorage or default
-        const saved = localStorage.getItem('neurolearn-accessibility')
-        if (saved) {
-          try {
-            setSettings({ ...defaultSettings, ...JSON.parse(saved) })
-          } catch {
-            setSettings(defaultSettings)
-          }
-        } else {
-          setSettings(defaultSettings)
-        }
+        // Already initialized from localStorage, no need to do anything
       }
     }
+    
     fetchSettings()
-  }, [])
-
-  // Save settings to backend and localStorage
-  useEffect(() => {
-    localStorage.setItem('neurolearn-accessibility', JSON.stringify(settings))
-    api.post('/user/accessibility-preferences', { preferences: settings }).catch(() => {})
-  }, [settings])
-
-  // Apply reduced motion preference
-  useEffect(() => {
-    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
-    if (mediaQuery.matches && !settings.reducedMotion) {
-      setSettings(prev => ({ ...prev, reducedMotion: true }))
+    
+    return () => {
+      cancelled = true
     }
-  }, [])
+  }, [isAuthenticated])
+
+  // Save settings to backend and localStorage (only when authenticated and initialized)
+  const prevSettingsRef = useRef(settings)
+  useEffect(() => {
+    // Skip if settings haven't actually changed
+    if (JSON.stringify(prevSettingsRef.current) === JSON.stringify(settings)) {
+      return
+    }
+    prevSettingsRef.current = settings
+    
+    // Always save to localStorage
+    localStorage.setItem('neurolearn-accessibility', JSON.stringify(settings))
+    
+    // Only save to backend if authenticated and initialized
+    if (isAuthenticated && isInitializedRef.current) {
+      api.post('/user/accessibility-preferences', { preferences: settings }).catch(() => {})
+    }
+  }, [settings, isAuthenticated])
 
   // Apply color theme
   useEffect(() => {

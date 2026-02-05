@@ -16,6 +16,8 @@ from dotenv import load_dotenv
 from models.learning_model import AdaptiveLearningModel
 from models.content_recommender import ContentRecommender
 from models.difficulty_adjuster import DifficultyAdjuster
+from models.adaptive_profiler import adaptive_profiler
+from models.biometric_analyzer import biometric_analyzer
 from services.analytics_service import AnalyticsService
 from services.content_generator import content_generator
 
@@ -472,6 +474,222 @@ async def generate_quiz(data: Dict[str, Any]):
 from services.video_generator import video_generator
 
 
+# ==================== ADAPTIVE LEARNING ENDPOINTS ====================
+
+class AdaptiveSessionRequest(BaseModel):
+    currentSession: Dict[str, Any]
+    profile: Dict[str, Any]
+    conditions: List[str]
+
+
+class BuildProfileRequest(BaseModel):
+    sessions: List[Dict[str, Any]]
+    conditions: List[str]
+
+
+class AnalyzeSessionRequest(BaseModel):
+    session: Dict[str, Any]
+    conditions: List[str]
+
+
+@app.post("/api/adaptive/real-time")
+async def get_real_time_adaptations(request: AdaptiveSessionRequest):
+    """
+    Get real-time learning adaptations during an active session.
+    Called periodically to adjust content on-the-fly based on:
+    - Current frustration/engagement levels
+    - Attention patterns
+    - Time since last break
+    - Content effectiveness
+    """
+    try:
+        adaptations = adaptive_profiler.get_real_time_adaptation(
+            current_session=request.currentSession,
+            profile=request.profile,
+            conditions=request.conditions
+        )
+        return {
+            "success": True,
+            **adaptations
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "should_suggest_break": False,
+            "should_simplify_content": False,
+            "messages": [f"Adaptation error: {str(e)}"]
+        }
+
+
+@app.post("/api/adaptive/build-profile")
+async def build_adaptive_profile(request: BuildProfileRequest):
+    """
+    Build or update an adaptive learning profile based on session history.
+    This analyzes behavioral patterns to discover:
+    - Optimal content types
+    - Best learning times
+    - Attention span patterns
+    - Frustration thresholds
+    - Break frequency needs
+    """
+    try:
+        profile = adaptive_profiler.build_adaptive_profile(
+            sessions=request.sessions,
+            conditions=request.conditions
+        )
+        return {
+            "success": True,
+            **profile
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/adaptive/analyze-session")
+async def analyze_single_session(request: AnalyzeSessionRequest):
+    """
+    Analyze a single learning session for immediate insights.
+    Returns detailed analysis including:
+    - Attention patterns
+    - Content preferences
+    - Emotional state
+    - Condition-specific observations
+    - Immediate recommendations
+    """
+    try:
+        from models.adaptive_profiler import SessionData
+        
+        session_data = adaptive_profiler._dict_to_session(request.session)
+        analysis = adaptive_profiler.analyze_session(session_data, request.conditions)
+        
+        return {
+            "success": True,
+            "analysis": analysis
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/adaptive/default-profile/{conditions}")
+async def get_default_profile(conditions: str):
+    """
+    Get default adaptive profile settings based on neurodiverse conditions.
+    Used for new users before behavioral data is collected.
+    """
+    try:
+        condition_list = conditions.split(",") if conditions else []
+        profile = adaptive_profiler._get_default_profile(condition_list)
+        return {
+            "success": True,
+            "profile": profile
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/adaptive/optimal-settings")
+async def get_optimal_settings(data: Dict[str, Any]):
+    """
+    Get optimal learning settings based on profile and current context.
+    Returns personalized recommendations for:
+    - Content chunk size
+    - Session duration
+    - Break frequency
+    - Content format priority
+    - UI adjustments
+    """
+    try:
+        profile = data.get("profile", {})
+        conditions = data.get("conditions", [])
+        time_of_day = data.get("timeOfDay", "afternoon")
+        device_type = data.get("deviceType", "desktop")
+        
+        discovered = profile.get("discoveredPreferences", {})
+        
+        # Get base settings from profile or defaults
+        settings = {
+            "chunkSize": discovered.get("optimalChunkSize", "medium"),
+            "sessionDuration": discovered.get("optimalSessionDuration", 25),
+            "breakFrequency": discovered.get("optimalBreakFrequency", 25),
+            "breakDuration": discovered.get("optimalBreakDuration", 5),
+            "contentPriority": [ct.get("type") for ct in discovered.get("preferredContentTypes", [])[:3]],
+            "gamificationLevel": "high" if discovered.get("respondsToGamification", True) else "low",
+            "feedbackFrequency": "high" if discovered.get("needsFrequentFeedback", True) else "normal",
+            "animationLevel": discovered.get("animationTolerance", "moderate"),
+        }
+        
+        # Apply condition-specific adjustments
+        for condition in conditions:
+            condition_lower = condition.lower()
+            if condition_lower == "adhd":
+                settings["chunkSize"] = "small" if settings["chunkSize"] in ["medium", "large"] else settings["chunkSize"]
+                settings["breakFrequency"] = min(settings["breakFrequency"], 15)
+            elif condition_lower == "autism":
+                settings["animationLevel"] = "minimal"
+            elif condition_lower == "dyslexia":
+                if "audio" not in settings["contentPriority"]:
+                    settings["contentPriority"].insert(0, "audio")
+        
+        # Adjust for device
+        if device_type == "mobile":
+            settings["chunkSize"] = "tiny" if settings["chunkSize"] == "small" else "small"
+            settings["sessionDuration"] = min(settings["sessionDuration"], 15)
+        
+        return {
+            "success": True,
+            "settings": settings,
+            "confidence": profile.get("confidenceScores", {}).get("overallConfidence", 0)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/adaptive/frustration-intervention")
+async def get_frustration_intervention(data: Dict[str, Any]):
+    """
+    Get appropriate intervention when frustration is detected.
+    Returns calming activities and content adjustments.
+    """
+    try:
+        frustration_level = data.get("frustrationLevel", 50)
+        conditions = data.get("conditions", [])
+        current_content_type = data.get("currentContentType", "text")
+        
+        response = {
+            "interventionNeeded": frustration_level > 65,
+            "severity": "high" if frustration_level > 80 else "medium" if frustration_level > 65 else "low",
+            "suggestions": []
+        }
+        
+        if frustration_level > 65:
+            # Get calming activities based on emotional state
+            state = "frustrated" if frustration_level > 80 else "anxious"
+            activities = learning_model.get_calming_activity(state)
+            
+            response["suggestions"].append({
+                "type": "break",
+                "message": "Let's take a short break. You're doing great!",
+                "activity": activities
+            })
+            
+            response["suggestions"].append({
+                "type": "content_switch",
+                "message": "Would you like to try a different format?",
+                "alternatives": ["video", "interactive"] if current_content_type == "text" else ["text", "audio"]
+            })
+            
+            if frustration_level > 80:
+                response["suggestions"].append({
+                    "type": "difficulty",
+                    "message": "Let me give you an easier version to build confidence.",
+                    "action": "simplify_content"
+                })
+        
+        return response
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 class VideoGenerationRequest(BaseModel):
     topic: str
     subject: str
@@ -571,6 +789,207 @@ async def get_video_avatars():
         "avatars": video_generator.avatars,
         "conditions_adaptations": video_generator.condition_adaptations
     }
+
+
+# ==================== BIOMETRIC ANALYSIS ENDPOINTS ====================
+
+class VoiceAnalysisRequest(BaseModel):
+    voice_metrics: Dict[str, Any]
+    conditions: Optional[List[str]] = None
+
+
+class EyeTrackingAnalysisRequest(BaseModel):
+    eye_metrics: Dict[str, Any]
+    conditions: Optional[List[str]] = None
+
+
+class MouseTrackingAnalysisRequest(BaseModel):
+    mouse_metrics: Dict[str, Any]
+    conditions: Optional[List[str]] = None
+
+
+class CombinedBiometricRequest(BaseModel):
+    voice_metrics: Optional[Dict[str, Any]] = None
+    eye_metrics: Optional[Dict[str, Any]] = None
+    mouse_metrics: Optional[Dict[str, Any]] = None
+    conditions: Optional[List[str]] = None
+
+
+class BiometricProfileRequest(BaseModel):
+    sessions: List[Dict[str, Any]]
+    conditions: List[str]
+
+
+@app.post("/api/biometric/analyze-voice")
+async def analyze_voice(request: VoiceAnalysisRequest):
+    """
+    Analyze voice patterns for stress, confidence, and learning indicators.
+    """
+    try:
+        result = biometric_analyzer.analyze_voice(
+            request.voice_metrics,
+            request.conditions or []
+        )
+        return {
+            "success": True,
+            "analysis": {
+                "speaking_pace": result.speaking_pace,
+                "confidence_level": result.confidence_level,
+                "stress_level": result.stress_level,
+                "hesitation_score": result.hesitation_score,
+                "reading_fluency": result.reading_fluency,
+                "emotional_state": result.emotional_state.value,
+                "recommendations": result.recommendations,
+                "adhd_indicators": result.adhd_indicators,
+                "dyslexia_indicators": result.dyslexia_indicators,
+                "anxiety_indicators": result.anxiety_indicators,
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/biometric/analyze-eye-tracking")
+async def analyze_eye_tracking(request: EyeTrackingAnalysisRequest):
+    """
+    Analyze eye tracking data for attention, reading patterns, and engagement.
+    """
+    try:
+        result = biometric_analyzer.analyze_eye_tracking(
+            request.eye_metrics,
+            request.conditions or []
+        )
+        return {
+            "success": True,
+            "analysis": {
+                "attention_score": result.attention_score,
+                "focus_quality": result.focus_quality,
+                "reading_pattern": result.reading_pattern,
+                "distraction_level": result.distraction_level,
+                "content_engagement": result.content_engagement,
+                "fatigue_indicators": result.fatigue_indicators,
+                "recommendations": result.recommendations,
+                "adhd_attention_pattern": result.adhd_attention_pattern,
+                "dyslexia_reading_pattern": result.dyslexia_reading_pattern,
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/biometric/analyze-mouse")
+async def analyze_mouse_tracking(request: MouseTrackingAnalysisRequest):
+    """
+    Analyze mouse movement patterns for frustration, engagement, and navigation.
+    """
+    try:
+        result = biometric_analyzer.analyze_mouse_tracking(
+            request.mouse_metrics,
+            request.conditions or []
+        )
+        return {
+            "success": True,
+            "analysis": {
+                "frustration_score": result.frustration_score,
+                "engagement_score": result.engagement_score,
+                "navigation_confidence": result.navigation_confidence,
+                "hesitation_level": result.hesitation_level,
+                "erratic_behavior_score": result.erratic_behavior_score,
+                "interaction_pattern": result.interaction_pattern,
+                "recommendations": result.recommendations,
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/biometric/analyze-combined")
+async def analyze_combined_biometrics(request: CombinedBiometricRequest):
+    """
+    Perform combined analysis of all biometric data sources.
+    Returns combined scores, profile updates, and intervention recommendations.
+    """
+    try:
+        result = biometric_analyzer.analyze_combined_biometrics(
+            voice_metrics=request.voice_metrics,
+            eye_metrics=request.eye_metrics,
+            mouse_metrics=request.mouse_metrics,
+            conditions=request.conditions or []
+        )
+        return {
+            "success": True,
+            **result
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/biometric/build-profile")
+async def build_biometric_profile(request: BiometricProfileRequest):
+    """
+    Build a comprehensive biometric profile from historical session data.
+    """
+    try:
+        profile = biometric_analyzer.build_biometric_profile(
+            request.sessions,
+            request.conditions
+        )
+        return {
+            "success": True,
+            "profile": {
+                "overall_attention": profile.overall_attention,
+                "overall_engagement": profile.overall_engagement,
+                "overall_stress": profile.overall_stress,
+                "overall_confidence": profile.overall_confidence,
+                "overall_frustration": profile.overall_frustration,
+                "optimal_content_pace": profile.optimal_content_pace,
+                "preferred_break_frequency": profile.preferred_break_frequency,
+                "best_session_duration": profile.best_session_duration,
+                "environmental_preferences": profile.environmental_preferences,
+                "visual_learner_score": profile.visual_learner_score,
+                "auditory_learner_score": profile.auditory_learner_score,
+                "kinesthetic_learner_score": profile.kinesthetic_learner_score,
+                "reading_preference_score": profile.reading_preference_score,
+                "recommended_adaptations": profile.recommended_adaptations,
+                "profile_confidence": profile.profile_confidence,
+                "data_points_analyzed": profile.data_points_analyzed,
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/biometric/real-time-intervention")
+async def get_biometric_intervention(request: CombinedBiometricRequest):
+    """
+    Get real-time intervention recommendations based on current biometric state.
+    """
+    try:
+        result = biometric_analyzer.analyze_combined_biometrics(
+            voice_metrics=request.voice_metrics,
+            eye_metrics=request.eye_metrics,
+            mouse_metrics=request.mouse_metrics,
+            conditions=request.conditions or []
+        )
+        
+        interventions = result.get('interventions', [])
+        combined_scores = result.get('combined_scores', {})
+        
+        # Determine most urgent intervention
+        urgent_intervention = None
+        if interventions:
+            high_priority = [i for i in interventions if i.get('priority') == 'high']
+            urgent_intervention = high_priority[0] if high_priority else interventions[0]
+        
+        return {
+            "success": True,
+            "scores": combined_scores,
+            "interventions": interventions,
+            "urgent_intervention": urgent_intervention,
+            "requires_immediate_action": bool(urgent_intervention and urgent_intervention.get('priority') == 'high'),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":

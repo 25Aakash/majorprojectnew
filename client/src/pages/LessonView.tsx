@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
@@ -6,6 +6,10 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import api from '../services/api'
 import { useAccessibility } from '../contexts/AccessibilityContext'
+import { useAdaptiveTracking } from '../hooks/useAdaptiveTracking'
+import { useBiometricTracking } from '../hooks/useBiometricTracking'
+import AdaptiveInterventionModal from '../components/AdaptiveInterventionModal'
+import BiometricPermissionsModal from '../components/BiometricPermissionsModal'
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -16,6 +20,10 @@ import {
   TrophyIcon,
   XCircleIcon,
   ArrowPathIcon,
+  SparklesIcon,
+  EyeIcon,
+  MicrophoneIcon,
+  CpuChipIcon,
 } from '@heroicons/react/24/outline'
 
 interface ContentBlock {
@@ -77,6 +85,120 @@ export default function LessonView() {
   const [quizScore, setQuizScore] = useState(0)
   const [answeredQuestions, setAnsweredQuestions] = useState<boolean[]>([])
   const [showExplanation, setShowExplanation] = useState(false)
+
+  // Adaptive learning tracking
+  const {
+    isOnboarding,
+    currentAdaptation,
+    metrics,
+    endSession,
+    trackContentInteraction,
+    trackQuizAnswer,
+    trackBreakTaken,
+    clearIntervention,
+  } = useAdaptiveTracking(lessonId || null, { courseId })
+
+  // Biometric tracking state
+  const [showBiometricModal, setShowBiometricModal] = useState(false)
+  const [biometricEnabled, setBiometricEnabled] = useState(() => {
+    // Load saved preferences from localStorage
+    const saved = localStorage.getItem('neurolearn_biometric_prefs')
+    if (saved) {
+      try {
+        return JSON.parse(saved)
+      } catch {
+        return { voice: false, eyeTracking: false, mouseTracking: true }
+      }
+    }
+    return { voice: false, eyeTracking: false, mouseTracking: true }
+  })
+  const [hasAskedPermissions, setHasAskedPermissions] = useState(false)
+
+  // Biometric tracking hook
+  const {
+    isCalibrated,
+    permissions: biometricPermissions,
+    currentScores: biometricScores,
+    isRecording: isVoiceRecording,
+    startVoiceTracking,
+    stopVoiceTracking,
+    setPermissionsGranted,
+  } = useBiometricTracking(lessonId || null, {
+    enabled: true,
+    enableVoice: biometricEnabled.voice,
+    enableEyeTracking: biometricEnabled.eyeTracking,
+    enableMouseTracking: biometricEnabled.mouseTracking,
+    onIntervention: (intervention) => {
+      // Handle biometric-based interventions
+      if (intervention.type === 'calming' || intervention.priority === 'high') {
+        setInterventionType(intervention.type as any)
+        setInterventionMessage(intervention.message)
+        setShowIntervention(true)
+      }
+    },
+  })
+
+  // Show biometric permissions modal on first visit
+  useEffect(() => {
+    const hasAsked = localStorage.getItem('neurolearn_biometric_asked')
+    if (!hasAsked && !hasAskedPermissions) {
+      // Show after a short delay
+      const timer = setTimeout(() => {
+        setShowBiometricModal(true)
+        setHasAskedPermissions(true)
+      }, 3000)
+      return () => clearTimeout(timer)
+    }
+  }, [hasAskedPermissions])
+
+  const handleBiometricPermissions = (perms: { voice: boolean; eyeTracking: boolean; mouseTracking: boolean }) => {
+    setBiometricEnabled(perms)
+    
+    // Update the hook's permissions state so tracking can start
+    setPermissionsGranted({
+      microphone: perms.voice,
+      camera: perms.eyeTracking,
+    })
+    
+    localStorage.setItem('neurolearn_biometric_asked', 'true')
+    localStorage.setItem('neurolearn_biometric_prefs', JSON.stringify(perms))
+    
+    if (perms.voice) {
+      toast.success('Voice analysis enabled')
+    }
+    if (perms.eyeTracking) {
+      toast.success('Eye tracking enabled')
+    }
+  }
+
+  // Intervention modal state
+  const [showIntervention, setShowIntervention] = useState(false)
+  const [interventionType, setInterventionType] = useState<'break' | 'simplify' | 'alternative' | 'calming' | 'encouragement'>('break')
+  const [interventionMessage, setInterventionMessage] = useState('')
+
+  // Show intervention when adaptation suggests it
+  useEffect(() => {
+    if (!currentAdaptation) return
+    
+    if (currentAdaptation.suggestBreak) {
+      setInterventionType('break')
+      setInterventionMessage('You\'ve been learning for a while. Taking a short break can help you focus better.')
+      setShowIntervention(true)
+    } else if (currentAdaptation.adjustDifficulty === 'decrease') {
+      setInterventionType('simplify')
+      setInterventionMessage('This content seems challenging. Would you like me to present it in a simpler way?')
+      setShowIntervention(true)
+    } else if (currentAdaptation.suggestedContentFormat && 
+               currentAdaptation.suggestedContentFormat !== contentFormat) {
+      setInterventionType('alternative')
+      setInterventionMessage(`Based on your learning style, you might prefer ${currentAdaptation.suggestedContentFormat} content.`)
+      setShowIntervention(true)
+    } else if (currentAdaptation.calmingActivity) {
+      setInterventionType('calming')
+      setInterventionMessage('Let\'s take a moment to relax and reset before continuing.')
+      setShowIntervention(true)
+    }
+  }, [currentAdaptation, contentFormat])
 
   // Track user interactions for focus score
   useEffect(() => {
@@ -231,6 +353,9 @@ export default function LessonView() {
       // Calculate dynamic focus score based on actual user behavior
       const focusScore = calculateFocusScore()
       
+      // End adaptive tracking session (lessonCompleted, optional quizScore)
+      await endSession(true, quizScore || undefined)
+      
       // Record session with dynamic metrics
       await api.post('/progress/session', {
         courseId,
@@ -257,6 +382,10 @@ export default function LessonView() {
 
   const goToNext = () => {
     if (lesson && currentBlockIndex < (lesson.contentBlocks?.length || 1) - 1) {
+      // Track content interaction with time spent on this block
+      const blockType = lesson.contentBlocks?.[currentBlockIndex]?.type || 'text'
+      trackContentInteraction(blockType, true)
+      
       setCurrentBlockIndex(prev => prev + 1)
       stopSpeaking()
       setIsSpeaking(false)
@@ -265,6 +394,10 @@ export default function LessonView() {
 
   const goToPrevious = () => {
     if (currentBlockIndex > 0) {
+      // Track that user went back (might indicate confusion)
+      const blockType = lesson?.contentBlocks?.[currentBlockIndex]?.type || 'text'
+      trackContentInteraction(blockType, false) // Not completed since going back
+      
       setCurrentBlockIndex(prev => prev - 1)
       stopSpeaking()
       setIsSpeaking(false)
@@ -439,6 +572,13 @@ export default function LessonView() {
     newAnswered[currentQuestionIndex] = true
     setAnsweredQuestions(newAnswered)
     setShowExplanation(true)
+    
+    // Track quiz answer for adaptive learning
+    if (lesson?.quiz) {
+      const currentQuestion = lesson.quiz.questions[currentQuestionIndex]
+      const isCorrect = selectedAnswers[currentQuestionIndex] === currentQuestion.correctAnswer
+      trackQuizAnswer(isCorrect, 'medium') // TODO: Get actual difficulty from question
+    }
   }
 
   const nextQuestion = () => {
@@ -652,6 +792,103 @@ export default function LessonView() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      {/* Biometric Permissions Modal */}
+      <BiometricPermissionsModal
+        isOpen={showBiometricModal}
+        onClose={() => {
+          setShowBiometricModal(false)
+          localStorage.setItem('neurolearn_biometric_asked', 'true')
+        }}
+        onSubmit={handleBiometricPermissions}
+        currentPermissions={biometricPermissions}
+      />
+
+      {/* Adaptive Intervention Modal */}
+      <AdaptiveInterventionModal
+        isVisible={showIntervention}
+        type={interventionType}
+        message={interventionMessage}
+        suggestedFormat={currentAdaptation?.suggestedContentFormat}
+        onDismiss={() => {
+          setShowIntervention(false)
+          clearIntervention()
+        }}
+        onAccept={(action) => {
+          if (action === 'video' || action === 'audio' || action === 'text') {
+            handleFormatChange(action as typeof contentFormat)
+          } else if (action === 'simplify') {
+            handleFormatChange('simplified')
+          }
+          setShowIntervention(false)
+          clearIntervention()
+        }}
+        onTakeBreak={() => {
+          trackBreakTaken()
+          setShowIntervention(false)
+          clearIntervention()
+          toast.success('Taking a break! You earned +5 XP for self-care 🌟')
+        }}
+      />
+
+      {/* Biometric Status Indicator */}
+      {(biometricEnabled.voice || biometricEnabled.eyeTracking) && (
+        <div className="fixed bottom-4 left-4 z-40 flex items-center gap-2 bg-white dark:bg-gray-800 
+                        rounded-full px-3 py-2 shadow-lg border border-gray-200 dark:border-gray-700">
+          {biometricEnabled.voice && (
+            <div className={`flex items-center gap-1 ${isVoiceRecording ? 'text-red-500' : 'text-gray-400'}`}>
+              <MicrophoneIcon className="h-4 w-4" />
+              {isVoiceRecording && <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />}
+            </div>
+          )}
+          {biometricEnabled.eyeTracking && (
+            <div className={`flex items-center gap-1 ${isCalibrated ? 'text-green-500' : 'text-gray-400'}`}>
+              <EyeIcon className="h-4 w-4" />
+              {isCalibrated && <span className="w-2 h-2 bg-green-500 rounded-full" />}
+            </div>
+          )}
+          <div className="text-xs text-gray-500 ml-1">
+            <CpuChipIcon className="h-3 w-3 inline mr-1" />
+            Adaptive
+          </div>
+        </div>
+      )}
+
+      {/* Biometric Scores (Debug/Dev Mode) */}
+      {(biometricEnabled.voice || biometricEnabled.eyeTracking || biometricEnabled.mouseTracking) && 
+       process.env.NODE_ENV === 'development' && (
+        <div className="fixed bottom-4 right-4 z-40 bg-white dark:bg-gray-800 
+                        rounded-lg px-3 py-2 shadow-lg border border-gray-200 dark:border-gray-700
+                        text-xs font-mono">
+          <div className="text-gray-500 mb-1">Biometric Scores</div>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+            <span>Attention:</span>
+            <span className={biometricScores.attention < 40 ? 'text-red-500' : 'text-green-500'}>
+              {biometricScores.attention.toFixed(0)}%
+            </span>
+            <span>Engagement:</span>
+            <span className={biometricScores.engagement < 40 ? 'text-red-500' : 'text-green-500'}>
+              {biometricScores.engagement.toFixed(0)}%
+            </span>
+            <span>Stress:</span>
+            <span className={biometricScores.stress > 60 ? 'text-red-500' : 'text-green-500'}>
+              {biometricScores.stress.toFixed(0)}%
+            </span>
+            <span>Frustration:</span>
+            <span className={biometricScores.frustration > 60 ? 'text-red-500' : 'text-green-500'}>
+              {biometricScores.frustration.toFixed(0)}%
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Onboarding indicator */}
+      {isOnboarding && (
+        <div className="bg-gradient-to-r from-primary-500 to-accent-500 text-white text-center py-2 px-4 text-sm">
+          <SparklesIcon className="h-4 w-4 inline mr-2" />
+          Learning Discovery Mode: We're adapting to your learning style
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-white dark:bg-gray-800 shadow-sm sticky top-0 z-40">
         <div className="max-w-4xl mx-auto px-4 py-4">
@@ -672,6 +909,20 @@ export default function LessonView() {
             <div className="flex items-center gap-4">
               {!showQuiz && (
                 <>
+                  {/* Biometric Settings Button */}
+                  <button
+                    onClick={() => setShowBiometricModal(true)}
+                    className={`p-2 rounded-lg ${
+                      (biometricEnabled.voice || biometricEnabled.eyeTracking) 
+                        ? 'bg-accent-100 text-accent-600 dark:bg-accent-900 dark:text-accent-400' 
+                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                    }`}
+                    aria-label="Biometric tracking settings"
+                    title="Enable voice/eye tracking"
+                  >
+                    <CpuChipIcon className="h-5 w-5" />
+                  </button>
+
                   {/* Format Selector */}
                   <div className="relative">
                     <button

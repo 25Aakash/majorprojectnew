@@ -82,6 +82,7 @@ function App() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/learn/:courseId/:lessonId" element={<LessonView />} />
             <Route path="/profile" element={<Profile />} />
+            <Route path="/accessibility" element={<AccessibilitySettings />} />
             <Route path="/settings/accessibility" element={<AccessibilitySettings />} />
             <Route path="/focus-mode" element={<FocusMode />} />
             <Route path="/parent-dashboard" element={<ParentDashboard />} />
