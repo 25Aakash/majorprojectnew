@@ -76,6 +76,32 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'NeuroLearn API is running' });
 });
 
+// SSE proxy for real-time interventions (Gap 6)
+app.get('/api/ai/events/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const url = `${AI_SERVICE_URL}/api/ai/events/${userId}`;
+
+    // Set SSE headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+
+    // Stream from AI service
+    const response = await axios.get(url, { responseType: 'stream' });
+    response.data.pipe(res);
+
+    // Cleanup on client disconnect
+    req.on('close', () => {
+      response.data.destroy();
+    });
+  } catch {
+    res.status(502).json({ message: 'AI SSE service unavailable' });
+  }
+});
+
 // MongoDB connection
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/neurolearn';
 

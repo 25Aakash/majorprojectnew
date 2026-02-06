@@ -68,15 +68,15 @@ class TestCalculateOptimalDifficulty:
     def test_increases_difficulty_on_high_scores(self, adjuster):
         """Should increase difficulty when scores are consistently high"""
         result = adjuster.calculate_optimal_difficulty(
-            current_difficulty=5.0,
+            current_difficulty=0.5,
             recent_scores=[95, 92, 90, 88],  # High scores
             avg_time=20.0,
             frustration=0,
             conditions=[]
         )
         
-        # Should suggest higher difficulty
-        assert result["level"] >= 5.0
+        # Should suggest higher difficulty (difficulty scale is 0-1)
+        assert result["level"] >= 0.5
 
     def test_decreases_difficulty_on_low_scores(self, adjuster):
         """Should decrease difficulty when scores are consistently low"""

@@ -696,18 +696,23 @@ export function useBiometricTracking(
   const sendBiometricUpdate = useCallback(async () => {
     if (!lessonId || !enabled) return
 
+    const voiceData = enableVoice ? voiceMetricsRef.current : null
+    const eyeData = enableEyeTracking ? {
+      ...eyeMetricsRef.current,
+      attentionHeatmap: Array.from(eyeMetricsRef.current.attentionHeatmap.entries()).map(([blockId, data]) => ({
+        contentBlockId: blockId,
+        ...data,
+        averageGazeDuration: data.gazeCount > 0 ? data.totalGazeTime / data.gazeCount : 0,
+      })),
+    } : null
+    const mouseData = enableMouseTracking ? mouseMetricsRef.current : null
+
     try {
+      // 1. Send to AI for real-time analysis (existing behaviour)
       const response = await api.post('/ai/biometric/analyze-combined', {
-        voice_metrics: enableVoice ? voiceMetricsRef.current : null,
-        eye_metrics: enableEyeTracking ? {
-          ...eyeMetricsRef.current,
-          attentionHeatmap: Array.from(eyeMetricsRef.current.attentionHeatmap.entries()).map(([blockId, data]) => ({
-            contentBlockId: blockId,
-            ...data,
-            averageGazeDuration: data.gazeCount > 0 ? data.totalGazeTime / data.gazeCount : 0,
-          })),
-        } : null,
-        mouse_metrics: enableMouseTracking ? mouseMetricsRef.current : null,
+        voice_metrics: voiceData,
+        eye_metrics: eyeData,
+        mouse_metrics: mouseData,
       })
 
       if (response.data.success) {
@@ -726,6 +731,17 @@ export function useBiometricTracking(
             })
           }
         }
+
+        // 2. Persist to MongoDB in background (Gap 3)
+        api.post('/biometric/persist', {
+          lessonId,
+          voiceMetrics: voiceData,
+          eyeMetrics: eyeData,
+          mouseMetrics: mouseData,
+          scores: response.data.combined_scores,
+        }).catch(() => {
+          // Non-critical — silent fail
+        })
       }
     } catch (error) {
       console.error('Failed to send biometric update:', error)

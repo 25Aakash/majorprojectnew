@@ -2,9 +2,12 @@
 Adaptive Learning Model
 Determines content adaptation based on neurodiverse profiles
 Uses dynamic configuration from backend API
+Loads trained ML models for predictions when available
 """
 
 import numpy as np
+import os
+import pickle
 from typing import List, Dict, Any
 
 # Import config service for dynamic configuration
@@ -18,11 +21,13 @@ try:
 except ImportError:
     USE_DYNAMIC_CONFIG = False
 
+# Paths for trained ML models
+MODEL_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'models', 'trained')
+
 
 class AdaptiveLearningModel:
     @staticmethod
     def load_from_disk(path: str):
-        import pickle
         with open(path, "rb") as f:
             return pickle.load(f)
 
@@ -31,8 +36,16 @@ class AdaptiveLearningModel:
         Initialize the model with configuration.
         If use_dynamic_config is True and config service is available,
         fetch configuration from backend API.
+        Also loads trained ML models if available for enhanced predictions.
         """
         self._use_dynamic_config = use_dynamic_config and USE_DYNAMIC_CONFIG
+        
+        # ML model slots
+        self._engagement_model = None
+        self._difficulty_model = None
+        self._content_classifier = None
+        self._scaler = None
+        self._ml_models_loaded = False
         
         # Initialize with default configuration
         # These will be updated dynamically if config service is available
@@ -41,6 +54,61 @@ class AdaptiveLearningModel:
         # Try to load dynamic config
         if self._use_dynamic_config:
             self._load_dynamic_config()
+        
+        # Try to load trained ML models
+        self._load_ml_models()
+    
+    def _load_ml_models(self):
+        """Load trained ML models from disk if available"""
+        try:
+            # Load sklearn models
+            difficulty_path = os.path.join(MODEL_DIR, 'difficulty_model_latest.pkl')
+            content_path = os.path.join(MODEL_DIR, 'content_classifier_latest.pkl')
+            scaler_path = os.path.join(MODEL_DIR, 'scaler_latest.pkl')
+            engagement_path = os.path.join(MODEL_DIR, 'engagement_model_latest')
+            
+            if os.path.exists(difficulty_path):
+                with open(difficulty_path, 'rb') as f:
+                    self._difficulty_model = pickle.load(f)
+                print("Loaded trained difficulty model")
+            
+            if os.path.exists(content_path):
+                with open(content_path, 'rb') as f:
+                    self._content_classifier = pickle.load(f)
+                print("Loaded trained content classifier")
+            
+            if os.path.exists(scaler_path):
+                with open(scaler_path, 'rb') as f:
+                    self._scaler = pickle.load(f)
+                print("Loaded feature scaler")
+            
+            # Load TensorFlow model if available
+            if os.path.exists(engagement_path):
+                try:
+                    import tensorflow as tf
+                    self._engagement_model = tf.keras.models.load_model(engagement_path)
+                    print("Loaded trained engagement model (TensorFlow)")
+                except ImportError:
+                    print("TensorFlow not available, skipping engagement model")
+                except Exception as e:
+                    print(f"Could not load engagement model: {e}")
+            
+            self._ml_models_loaded = any([
+                self._difficulty_model, self._content_classifier, self._engagement_model
+            ])
+            
+            if self._ml_models_loaded:
+                print(f"ML models loaded successfully from {MODEL_DIR}")
+            else:
+                print("No trained ML models found — using heuristic-based predictions")
+        except Exception as e:
+            print(f"Could not load ML models: {e}")
+            self._ml_models_loaded = False
+    
+    @property
+    def has_trained_models(self) -> bool:
+        """Check if trained ML models are available"""
+        return self._ml_models_loaded
     
     def _init_default_config(self):
         """Initialize default configuration values"""
@@ -279,26 +347,141 @@ class AdaptiveLearningModel:
         historical_performance: List[float]
     ) -> Dict[str, Any]:
         """
-        Predict learning outcome for a course
+        Predict learning outcome for a course.
+        Uses trained ML models when available, falls back to heuristics.
         """
+        # Try ML-based prediction first
+        if self._ml_models_loaded and self._engagement_model and self._scaler:
+            try:
+                features = self._build_feature_vector(profile, course_difficulty, historical_performance)
+                features_scaled = self._scaler.transform([features])
+                
+                engagement_pred = float(self._engagement_model.predict(features_scaled, verbose=0)[0][0])
+                predicted_success = min(1.0, max(0.0, engagement_pred))
+                
+                # Higher confidence when using ML model
+                confidence = min(0.95, 0.7 + (len(historical_performance) * 0.03))
+                
+                return {
+                    "predicted_success_rate": round(predicted_success, 2),
+                    "confidence": round(confidence, 2),
+                    "recommended_pace": "slow" if predicted_success < 0.6 else "normal",
+                    "extra_support_needed": predicted_success < 0.5,
+                    "prediction_method": "ml_model"
+                }
+            except Exception as e:
+                print(f"ML prediction failed, falling back to heuristics: {e}")
+        
+        # Heuristic fallback
         if not historical_performance:
-            # No history - use moderate prediction
             predicted_success = 0.7
         else:
-            # Use weighted average with recent performance weighted more
             weights = np.linspace(0.5, 1.0, len(historical_performance))
             weighted_avg = np.average(historical_performance, weights=weights)
-            
-            # Adjust for course difficulty
             difficulty_factor = 1.0 - (course_difficulty * 0.3)
             predicted_success = min(1.0, weighted_avg * difficulty_factor)
         
-        # Confidence based on data amount
         confidence = min(0.9, 0.5 + (len(historical_performance) * 0.05))
         
         return {
             "predicted_success_rate": round(predicted_success, 2),
             "confidence": round(confidence, 2),
             "recommended_pace": "slow" if predicted_success < 0.6 else "normal",
-            "extra_support_needed": predicted_success < 0.5
+            "extra_support_needed": predicted_success < 0.5,
+            "prediction_method": "heuristic"
         }
+    
+    def predict_optimal_content_type(
+        self,
+        profile: Dict[str, Any],
+        historical_performance: List[float]
+    ) -> str:
+        """
+        Predict the best content type using the trained content classifier.
+        Falls back to learning_style_variants mapping.
+        """
+        if self._ml_models_loaded and self._content_classifier and self._scaler:
+            try:
+                features = self._build_feature_vector(profile, 0.5, historical_performance)
+                features_scaled = self._scaler.transform([features])
+                prediction = self._content_classifier.predict(features_scaled)[0]
+                content_map = {0: 'visual', 1: 'auditory', 2: 'kinesthetic', 3: 'reading'}
+                return content_map.get(int(prediction), 'standard')
+            except Exception:
+                pass
+        
+        # Fallback to style-based mapping
+        style = profile.get('learning_style', 'visual')
+        return self.learning_style_variants.get(style, 'standard')
+    
+    def predict_difficulty(
+        self,
+        profile: Dict[str, Any],
+        current_difficulty: float,
+        historical_performance: List[float]
+    ) -> float:
+        """
+        Predict optimal difficulty using trained difficulty model.
+        Falls back to simple heuristic.
+        """
+        if self._ml_models_loaded and self._difficulty_model and self._scaler:
+            try:
+                features = self._build_feature_vector(profile, current_difficulty, historical_performance)
+                features_scaled = self._scaler.transform([features])
+                prediction = float(self._difficulty_model.predict(features_scaled)[0])
+                return round(min(1.0, max(0.1, prediction)), 2)
+            except Exception:
+                pass
+        
+        # Fallback
+        if not historical_performance:
+            return current_difficulty
+        avg = np.mean(historical_performance)
+        if avg > 0.85:
+            return min(1.0, current_difficulty + 0.1)
+        elif avg < 0.5:
+            return max(0.1, current_difficulty - 0.1)
+        return current_difficulty
+    
+    def _build_feature_vector(
+        self,
+        profile: Dict[str, Any],
+        difficulty: float,
+        performance: List[float]
+    ) -> List[float]:
+        """
+        Build a feature vector matching retrain.py's preprocessor.
+        15 features: condition one-hot (5), style one-hot (4), session stats (3), progress (2), difficulty (1)
+        """
+        conditions = [c.lower() for c in profile.get('conditions', [])]
+        style = profile.get('learning_style', 'visual').lower()
+        
+        # Condition one-hot encoding (5 features)
+        condition_features = [
+            1.0 if 'adhd' in conditions else 0.0,
+            1.0 if 'autism' in conditions else 0.0,
+            1.0 if 'dyslexia' in conditions else 0.0,
+            1.0 if 'dyscalculia' in conditions else 0.0,
+            1.0 if 'dyspraxia' in conditions else 0.0,
+        ]
+        
+        # Learning style one-hot (4 features)
+        style_features = [
+            1.0 if style == 'visual' else 0.0,
+            1.0 if style == 'auditory' else 0.0,
+            1.0 if style == 'kinesthetic' else 0.0,
+            1.0 if style == 'reading' else 0.0,
+        ]
+        
+        # Session stats (3 features)
+        avg_perf = float(np.mean(performance)) if performance else 0.5
+        session_count = len(performance)
+        perf_trend = float(np.polyfit(range(len(performance)), performance, 1)[0]) if len(performance) > 1 else 0.0
+        
+        # Progress (2 features)
+        progress = profile.get('progress', {})
+        overall = progress.get('overallProgress', 50) / 100.0
+        lessons_done = min(1.0, progress.get('lessonsCompleted', 0) / 50.0)
+        
+        # Difficulty (1 feature)
+        return condition_features + style_features + [avg_perf, session_count / 10.0, perf_trend, overall, lessons_done, difficulty]

@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, act, renderHook, waitFor } from '@testing-library/react';
-import { ReactNode } from 'react';
+import { render, act, waitFor } from '@testing-library/react';
 import { AccessibilityProvider, useAccessibility } from '../../contexts/AccessibilityContext';
 import api from '../../services/api';
 import { useAuthStore } from '../../stores/authStore';
@@ -17,18 +16,11 @@ vi.mock('../../stores/authStore', () => ({
   useAuthStore: vi.fn(),
 }));
 
-// Create wrapper component
-const createWrapper = () => {
-  return ({ children }: { children: ReactNode }) => (
-    <AccessibilityProvider>{children}</AccessibilityProvider>
-  );
-};
-
 describe('AccessibilityContext', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     localStorage.clear();
-    (useAuthStore as ReturnType<typeof vi.fn>).mockImplementation((selector: (state: any) => any) => 
+    (useAuthStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector: (state: any) => any) => 
       selector({ isAuthenticated: false })
     );
 
@@ -41,10 +33,20 @@ describe('AccessibilityContext', () => {
       writable: true,
     });
 
+    // Mock SpeechSynthesisUtterance as a proper class (required for `new` calls)
+    vi.stubGlobal('SpeechSynthesisUtterance', class {
+      text: string;
+      rate = 1;
+      pitch = 1;
+      constructor(text: string) {
+        this.text = text;
+      }
+    });
+
     // Mock matchMedia
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
-      value: vi.fn().mockImplementation(query => ({
+      value: vi.fn().mockImplementation((query: any) => ({
         matches: false,
         media: query,
         onchange: null,
@@ -63,13 +65,11 @@ describe('AccessibilityContext', () => {
 
   describe('default settings', () => {
     it('should provide default settings', async () => {
-      const wrapper = createWrapper();
-      
       // We need to test the hook behavior
-      let hookResult: { settings: any } | null = null;
+      let hookResult: any = null;
       
       const TestComponent = () => {
-        const { settings } = require('../../contexts/AccessibilityContext').useAccessibility();
+        const { settings } = useAccessibility();
         hookResult = { settings };
         return null;
       };
@@ -104,13 +104,12 @@ describe('AccessibilityContext', () => {
         lineSpacing: 'relaxed',
         colorTheme: 'sepia',
       };
-      localStorage.setItem('neurolearn-accessibility', JSON.stringify(savedSettings));
+      (localStorage.getItem as ReturnType<typeof vi.fn>).mockReturnValue(JSON.stringify(savedSettings));
 
-      let hookResult: { settings: any } | null = null;
+      let hookResult: any = null;
       
       const TestComponent = () => {
-        const context = require('../../contexts/AccessibilityContext').useAccessibility();
-        hookResult = context;
+        hookResult = useAccessibility();
         return null;
       };
 
@@ -128,13 +127,12 @@ describe('AccessibilityContext', () => {
     });
 
     it('should handle invalid JSON in localStorage gracefully', async () => {
-      localStorage.setItem('neurolearn-accessibility', 'invalid-json');
+      (localStorage.getItem as ReturnType<typeof vi.fn>).mockReturnValue('invalid-json');
 
-      let hookResult: { settings: any } | null = null;
+      let hookResult: any = null;
       
       const TestComponent = () => {
-        const context = require('../../contexts/AccessibilityContext').useAccessibility();
-        hookResult = context;
+        hookResult = useAccessibility();
         return null;
       };
 
@@ -153,11 +151,10 @@ describe('AccessibilityContext', () => {
 
   describe('updateSettings', () => {
     it('should update settings when called', async () => {
-      let hookResult: { settings: any; updateSettings: (s: any) => void } | null = null;
+      let hookResult: any = null;
       
       const TestComponent = () => {
-        const context = require('../../contexts/AccessibilityContext').useAccessibility();
-        hookResult = context;
+        hookResult = useAccessibility();
         return null;
       };
 
@@ -177,11 +174,10 @@ describe('AccessibilityContext', () => {
     });
 
     it('should save settings to localStorage', async () => {
-      let hookResult: { updateSettings: (s: any) => void } | null = null;
+      let hookResult: any = null;
       
       const TestComponent = () => {
-        const context = require('../../contexts/AccessibilityContext').useAccessibility();
-        hookResult = context;
+        hookResult = useAccessibility();
         return null;
       };
 
@@ -197,10 +193,10 @@ describe('AccessibilityContext', () => {
         hookResult?.updateSettings({ fontSize: 'large' });
       });
 
-      const saved = localStorage.getItem('neurolearn-accessibility');
-      expect(saved).toBeDefined();
-      const parsed = JSON.parse(saved!);
-      expect(parsed.fontSize).toBe('large');
+      expect(localStorage.setItem).toHaveBeenCalledWith(
+        'neurolearn-accessibility',
+        expect.stringContaining('"fontSize":"large"')
+      );
     });
   });
 
@@ -208,11 +204,10 @@ describe('AccessibilityContext', () => {
     it('should reset to default settings', async () => {
       localStorage.setItem('neurolearn-accessibility', JSON.stringify({ fontSize: 'large' }));
 
-      let hookResult: { settings: any; resetSettings: () => void; updateSettings: (s: any) => void } | null = null;
+      let hookResult: any = null;
       
       const TestComponent = () => {
-        const context = require('../../contexts/AccessibilityContext').useAccessibility();
-        hookResult = context;
+        hookResult = useAccessibility();
         return null;
       };
 
@@ -242,11 +237,10 @@ describe('AccessibilityContext', () => {
     it('should remove from localStorage', async () => {
       localStorage.setItem('neurolearn-accessibility', JSON.stringify({ fontSize: 'large' }));
 
-      let hookResult: { resetSettings: () => void } | null = null;
+      let hookResult: any = null;
       
       const TestComponent = () => {
-        const context = require('../../contexts/AccessibilityContext').useAccessibility();
-        hookResult = context;
+        hookResult = useAccessibility();
         return null;
       };
 
@@ -262,17 +256,16 @@ describe('AccessibilityContext', () => {
         hookResult?.resetSettings();
       });
 
-      expect(localStorage.getItem('neurolearn-accessibility')).toBeNull();
+      expect(localStorage.removeItem).toHaveBeenCalledWith('neurolearn-accessibility');
     });
   });
 
   describe('text-to-speech', () => {
     it('should speak text when enabled', async () => {
-      let hookResult: { settings: any; speak: (text: string) => void; updateSettings: (s: any) => void } | null = null;
+      let hookResult: any = null;
       
       const TestComponent = () => {
-        const context = require('../../contexts/AccessibilityContext').useAccessibility();
-        hookResult = context;
+        hookResult = useAccessibility();
         return null;
       };
 
@@ -297,11 +290,10 @@ describe('AccessibilityContext', () => {
     });
 
     it('should not speak when disabled', async () => {
-      let hookResult: { speak: (text: string) => void } | null = null;
+      let hookResult: any = null;
       
       const TestComponent = () => {
-        const context = require('../../contexts/AccessibilityContext').useAccessibility();
-        hookResult = context;
+        hookResult = useAccessibility();
         return null;
       };
 
@@ -321,11 +313,10 @@ describe('AccessibilityContext', () => {
     });
 
     it('should stop speaking when stopSpeaking is called', async () => {
-      let hookResult: { stopSpeaking: () => void } | null = null;
+      let hookResult: any = null;
       
       const TestComponent = () => {
-        const context = require('../../contexts/AccessibilityContext').useAccessibility();
-        hookResult = context;
+        hookResult = useAccessibility();
         return null;
       };
 
@@ -350,7 +341,7 @@ describe('AccessibilityContext', () => {
       // Mock matchMedia to return reduced motion preference
       Object.defineProperty(window, 'matchMedia', {
         writable: true,
-        value: vi.fn().mockImplementation(query => ({
+        value: vi.fn().mockImplementation((query: any) => ({
           matches: query === '(prefers-reduced-motion: reduce)',
           media: query,
           onchange: null,
@@ -362,11 +353,8 @@ describe('AccessibilityContext', () => {
         })),
       });
 
-      let hookResult: { settings: any } | null = null;
-      
       const TestComponent = () => {
-        const context = require('../../contexts/AccessibilityContext').useAccessibility();
-        hookResult = context;
+        useAccessibility();
         return null;
       };
 
@@ -385,7 +373,7 @@ describe('AccessibilityContext', () => {
 
   describe('API integration', () => {
     it('should fetch settings from API when authenticated', async () => {
-      (useAuthStore as ReturnType<typeof vi.fn>).mockImplementation((selector: (state: any) => any) => 
+      (useAuthStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector: (state: any) => any) => 
         selector({ isAuthenticated: true })
       );
 
@@ -398,8 +386,11 @@ describe('AccessibilityContext', () => {
         },
       });
 
+      // Also mock api.post to return a promise (used by settings save effect)
+      (api.post as ReturnType<typeof vi.fn>).mockResolvedValue({ data: {} });
+
       const TestComponent = () => {
-        const context = require('../../contexts/AccessibilityContext').useAccessibility();
+        useAccessibility();
         return null;
       };
 
@@ -417,12 +408,12 @@ describe('AccessibilityContext', () => {
     });
 
     it('should not fetch from API when not authenticated', async () => {
-      (useAuthStore as ReturnType<typeof vi.fn>).mockImplementation((selector: (state: any) => any) => 
+      (useAuthStore as unknown as ReturnType<typeof vi.fn>).mockImplementation((selector: (state: any) => any) => 
         selector({ isAuthenticated: false })
       );
 
       const TestComponent = () => {
-        const context = require('../../contexts/AccessibilityContext').useAccessibility();
+        useAccessibility();
         return null;
       };
 

@@ -326,4 +326,75 @@ function generateProfileRecommendations(sessions: any[]): string[] {
   return recommendations
 }
 
+// ─── Gap 3: Bulk biometric persistence ────────────────────────────────────────
+
+/**
+ * Persist a combined biometric snapshot.
+ * Creates a session if needed, then updates metrics + analysis scores.
+ */
+router.post('/persist', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.userId
+    const { lessonId, courseId, learningSessionId, voiceMetrics, eyeMetrics, mouseMetrics, scores } = req.body
+
+    // Find or create session for this lesson
+    let session = await BiometricSession.findOne({
+      userId,
+      lessonId,
+      endTime: null, // still active
+    })
+
+    if (!session) {
+      session = new BiometricSession({
+        userId,
+        lessonId,
+        courseId: courseId || 'unknown',
+        learningSessionId,
+        startTime: new Date(),
+        permissions: { voiceEnabled: !!voiceMetrics, eyeTrackingEnabled: !!eyeMetrics, mouseTrackingEnabled: true, webcamEnabled: false },
+        voiceMetrics: { samples: [], averagePace: 0, pitchLevel: 0, speechClarity: 0 },
+        eyeTrackingMetrics: {
+          calibrationAccuracy: 0, gazePath: [], attentionHeatmap: [], distractionZones: [],
+        },
+        mouseTrackingMetrics: {
+          hoverEvents: [], idleEvents: [],
+        },
+      })
+    }
+
+    // Update metrics
+    if (voiceMetrics && session.voiceMetrics) {
+      session.voiceMetrics.averagePace = voiceMetrics.averagePace ?? session.voiceMetrics.averagePace
+      session.voiceMetrics.pitchLevel = voiceMetrics.averagePitch ?? session.voiceMetrics.pitchLevel
+      session.voiceMetrics.speechClarity = voiceMetrics.confidenceScore ?? session.voiceMetrics.speechClarity
+    }
+    if (mouseMetrics) {
+      session.mouseTrackingMetrics.scrollPatterns = {
+        totalScrollDistance: mouseMetrics.totalScrollDistance ?? 0,
+        averageScrollSpeed: mouseMetrics.averageSpeed ?? 0,
+        scrollUpCount: 0,
+        scrollDownCount: 0,
+        rapidScrollCount: 0,
+        scrollBackCount: mouseMetrics.scrollReversals ?? 0,
+      }
+    }
+    if (scores) {
+      session.scores = {
+        attentionScore: scores.attention ?? 0,
+        engagementScore: scores.engagement ?? 0,
+        stressLevel: scores.stress ?? 0,
+        confidenceLevel: scores.confidence ?? 0,
+        frustrationLevel: scores.frustration ?? 0,
+        focusQuality: scores.focus ?? 0,
+      }
+    }
+
+    await session.save()
+    res.json({ success: true, sessionId: session._id })
+  } catch (error) {
+    console.error('Error persisting biometric data:', error)
+    res.status(500).json({ error: 'Failed to persist biometric data' })
+  }
+})
+
 export default router

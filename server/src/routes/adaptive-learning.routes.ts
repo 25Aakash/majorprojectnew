@@ -135,21 +135,19 @@ router.put('/session/:sessionId/update', authMiddleware, async (req: AuthRequest
 
     await session.save();
 
-    // If in onboarding period, try to get real-time adaptations from AI service
+    // Get real-time adaptations from AI service (for ALL users, not just onboarding)
     let adaptations = null;
-    if (session.isOnboardingPeriod) {
-      try {
-        const profile = await AdaptiveProfile.findOne({ userId: session.userId });
-        const response = await axios.post(`${AI_SERVICE_URL}/api/adaptive/real-time`, {
-          currentSession: session.toObject(),
-          profile: profile?.toObject() || {},
-          conditions: req.user?.neurodiverseProfile?.conditions || [],
-        });
-        adaptations = response.data;
-      } catch (aiError) {
-        // AI service unavailable - continue without adaptations
-        console.debug('AI service unavailable for real-time adaptations');
-      }
+    try {
+      const profile = await AdaptiveProfile.findOne({ userId: session.userId });
+      const response = await axios.post(`${AI_SERVICE_URL}/api/adaptive/real-time`, {
+        currentSession: session.toObject(),
+        profile: profile?.toObject() || {},
+        conditions: req.user?.neurodiverseProfile?.conditions || [],
+      });
+      adaptations = response.data;
+    } catch (aiError) {
+      // AI service unavailable - continue without adaptations
+      console.debug('AI service unavailable for real-time adaptations');
     }
 
     res.json({ 
@@ -189,10 +187,8 @@ router.post('/session/:sessionId/end', authMiddleware, async (req: AuthRequest, 
 
     await session.save();
 
-    // If in onboarding period, trigger profile update
-    if (session.isOnboardingPeriod) {
-      await updateAdaptiveProfile(session.userId.toString(), req.user?.neurodiverseProfile?.conditions || []);
-    }
+    // Always trigger profile update (continuous learning, not just onboarding)
+    await updateAdaptiveProfile(session.userId.toString(), req.user?.neurodiverseProfile?.conditions || []);
 
     res.json({
       message: 'Session ended',
@@ -375,11 +371,10 @@ router.post('/profile/update', authMiddleware, async (req: AuthRequest, res: Res
  */
 async function updateAdaptiveProfile(userId: string, conditions: string[]): Promise<void> {
   try {
-    // Get all onboarding sessions
+    // Get all recent sessions (continuous adaptation, not just onboarding)
     const sessions = await LearningSession.find({
       userId,
-      isOnboardingPeriod: true,
-    }).sort({ startTime: -1 }).limit(50);
+    }).sort({ startTime: -1 }).limit(100);
 
     if (sessions.length === 0) return;
 

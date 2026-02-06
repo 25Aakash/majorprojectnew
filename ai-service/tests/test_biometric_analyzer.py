@@ -95,6 +95,8 @@ class TestAnalyzeVoice:
             "volumeVariability": 0.3,
             "pitchVariability": 0.2,
             "speechClarity": 60,
+            "hesitationPatterns": 50,  # High hesitation
+            "selfCorrections": 10,  # Frequent self-corrections
         }
 
     def test_analyze_voice_returns_result(self, analyzer, normal_voice_metrics):
@@ -335,6 +337,9 @@ class TestAnalyzeMouseTracking:
             "hesitationCount": 1,
             "backtrackCount": 0,
             "erraticMovementCount": 0,
+            "pathStraightness": 0.9,
+            "missClickCount": 0,
+            "directionChanges": 5,
         }
 
     @pytest.fixture
@@ -362,6 +367,9 @@ class TestAnalyzeMouseTracking:
             "hesitationCount": 8,
             "backtrackCount": 5,
             "erraticMovementCount": 10,
+            "pathStraightness": 0.2,
+            "missClickCount": 5,
+            "directionChanges": 200,
         }
 
     def test_analyze_returns_result(self, analyzer, confident_mouse_data):
@@ -440,14 +448,19 @@ class TestBuildProfile:
 
     def test_build_profile_returns_result(self, analyzer, sample_biometric_data):
         """Should return BiometricProfile"""
-        result = analyzer.build_biometric_profile(sample_biometric_data)
+        result = analyzer.build_biometric_profile(
+            sample_biometric_data["sessions"],
+            sample_biometric_data["conditions"]
+        )
         
         assert isinstance(result, BiometricProfile)
-        assert result.user_id == "user123"
 
     def test_profile_has_aggregated_scores(self, analyzer, sample_biometric_data):
         """Profile should have aggregated scores"""
-        result = analyzer.build_biometric_profile(sample_biometric_data)
+        result = analyzer.build_biometric_profile(
+            sample_biometric_data["sessions"],
+            sample_biometric_data["conditions"]
+        )
         
         assert hasattr(result, "overall_attention")
         assert hasattr(result, "overall_engagement")
@@ -456,7 +469,10 @@ class TestBuildProfile:
 
     def test_profile_has_learning_style_scores(self, analyzer, sample_biometric_data):
         """Profile should have learning style indicators"""
-        result = analyzer.build_biometric_profile(sample_biometric_data)
+        result = analyzer.build_biometric_profile(
+            sample_biometric_data["sessions"],
+            sample_biometric_data["conditions"]
+        )
         
         assert hasattr(result, "visual_learner_score")
         assert hasattr(result, "auditory_learner_score")
@@ -464,14 +480,20 @@ class TestBuildProfile:
 
     def test_profile_has_adaptations(self, analyzer, sample_biometric_data):
         """Profile should have recommended adaptations"""
-        result = analyzer.build_biometric_profile(sample_biometric_data)
+        result = analyzer.build_biometric_profile(
+            sample_biometric_data["sessions"],
+            sample_biometric_data["conditions"]
+        )
         
         assert hasattr(result, "recommended_adaptations")
         assert isinstance(result.recommended_adaptations, list)
 
     def test_profile_confidence_calculation(self, analyzer, sample_biometric_data):
         """Profile should have confidence score"""
-        result = analyzer.build_biometric_profile(sample_biometric_data)
+        result = analyzer.build_biometric_profile(
+            sample_biometric_data["sessions"],
+            sample_biometric_data["conditions"]
+        )
         
         assert hasattr(result, "profile_confidence")
         assert 0 <= result.profile_confidence <= 100

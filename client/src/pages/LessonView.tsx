@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
@@ -8,8 +8,10 @@ import api from '../services/api'
 import { useAccessibility } from '../contexts/AccessibilityContext'
 import { useAdaptiveTracking } from '../hooks/useAdaptiveTracking'
 import { useBiometricTracking } from '../hooks/useBiometricTracking'
+import { useSSEInterventions } from '../hooks/useSSEInterventions'
 import AdaptiveInterventionModal from '../components/AdaptiveInterventionModal'
 import BiometricPermissionsModal from '../components/BiometricPermissionsModal'
+import { useAuthStore } from '../stores/authStore'
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -90,7 +92,6 @@ export default function LessonView() {
   const {
     isOnboarding,
     currentAdaptation,
-    metrics,
     endSession,
     trackContentInteraction,
     trackQuizAnswer,
@@ -120,8 +121,6 @@ export default function LessonView() {
     permissions: biometricPermissions,
     currentScores: biometricScores,
     isRecording: isVoiceRecording,
-    startVoiceTracking,
-    stopVoiceTracking,
     setPermissionsGranted,
   } = useBiometricTracking(lessonId || null, {
     enabled: true,
@@ -150,6 +149,18 @@ export default function LessonView() {
       return () => clearTimeout(timer)
     }
   }, [hasAskedPermissions])
+
+  // Real-time SSE push interventions (Gap 6)
+  const user = useAuthStore((s) => s.user)
+  useSSEInterventions({
+    userId: user?.id,
+    enabled: true,
+    onIntervention: (intervention) => {
+      setInterventionType(intervention.type as any)
+      setInterventionMessage(intervention.message)
+      setShowIntervention(true)
+    },
+  })
 
   const handleBiometricPermissions = (perms: { voice: boolean; eyeTracking: boolean; mouseTracking: boolean }) => {
     setBiometricEnabled(perms)
@@ -180,20 +191,21 @@ export default function LessonView() {
   useEffect(() => {
     if (!currentAdaptation) return
     
-    if (currentAdaptation.suggestBreak) {
+    if (currentAdaptation.should_suggest_break) {
       setInterventionType('break')
       setInterventionMessage('You\'ve been learning for a while. Taking a short break can help you focus better.')
       setShowIntervention(true)
-    } else if (currentAdaptation.adjustDifficulty === 'decrease') {
+    } else if (currentAdaptation.should_reduce_difficulty) {
       setInterventionType('simplify')
       setInterventionMessage('This content seems challenging. Would you like me to present it in a simpler way?')
       setShowIntervention(true)
-    } else if (currentAdaptation.suggestedContentFormat && 
-               currentAdaptation.suggestedContentFormat !== contentFormat) {
+    } else if (currentAdaptation.should_offer_alternative_format &&
+               currentAdaptation.suggested_format &&
+               currentAdaptation.suggested_format !== contentFormat) {
       setInterventionType('alternative')
-      setInterventionMessage(`Based on your learning style, you might prefer ${currentAdaptation.suggestedContentFormat} content.`)
+      setInterventionMessage(`Based on your learning style, you might prefer ${currentAdaptation.suggested_format} content.`)
       setShowIntervention(true)
-    } else if (currentAdaptation.calmingActivity) {
+    } else if (currentAdaptation.calming_intervention_needed) {
       setInterventionType('calming')
       setInterventionMessage('Let\'s take a moment to relax and reset before continuing.')
       setShowIntervention(true)
@@ -577,7 +589,7 @@ export default function LessonView() {
     if (lesson?.quiz) {
       const currentQuestion = lesson.quiz.questions[currentQuestionIndex]
       const isCorrect = selectedAnswers[currentQuestionIndex] === currentQuestion.correctAnswer
-      trackQuizAnswer(isCorrect, 'medium') // TODO: Get actual difficulty from question
+      trackQuizAnswer(`q${currentQuestionIndex}`, isCorrect, 10, false) // questionId, wasCorrect, timeToAnswer, usedHint
     }
   }
 
@@ -808,7 +820,7 @@ export default function LessonView() {
         isVisible={showIntervention}
         type={interventionType}
         message={interventionMessage}
-        suggestedFormat={currentAdaptation?.suggestedContentFormat}
+        suggestedFormat={currentAdaptation?.suggested_format}
         onDismiss={() => {
           setShowIntervention(false)
           clearIntervention()
@@ -823,7 +835,7 @@ export default function LessonView() {
           clearIntervention()
         }}
         onTakeBreak={() => {
-          trackBreakTaken()
+          trackBreakTaken(true)
           setShowIntervention(false)
           clearIntervention()
           toast.success('Taking a break! You earned +5 XP for self-care 🌟')

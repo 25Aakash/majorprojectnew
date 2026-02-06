@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import axios from 'axios';
 
 // We need to test the interceptors behavior, not the mock
 describe('API Service', () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, act, waitFor } from '@testing-library/react';
+import { renderHook, waitFor } from '@testing-library/react';
 import { useAdaptiveTracking } from '../../hooks/useAdaptiveTracking';
 import api from '../../services/api';
 
@@ -15,7 +15,7 @@ vi.mock('../../services/api', () => ({
 describe('useAdaptiveTracking', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.useFakeTimers();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
   });
 
   afterEach(() => {
@@ -55,7 +55,7 @@ describe('useAdaptiveTracking', () => {
         },
       });
 
-      const { result } = renderHook(() =>
+      renderHook(() =>
         useAdaptiveTracking('lesson123', { enabled: true, courseId: 'course123' })
       );
 
@@ -127,8 +127,8 @@ describe('useAdaptiveTracking', () => {
       );
 
       await waitFor(() => {
-        expect(result.current.recordHelpRequest).toBeDefined();
-        expect(typeof result.current.recordHelpRequest).toBe('function');
+        expect(result.current.trackHelpRequest).toBeDefined();
+        expect(typeof result.current.trackHelpRequest).toBe('function');
       });
     });
 
@@ -210,7 +210,7 @@ describe('useAdaptiveTracking', () => {
 
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-      const { result } = renderHook(() =>
+      renderHook(() =>
         useAdaptiveTracking('lesson123', { enabled: true })
       );
 

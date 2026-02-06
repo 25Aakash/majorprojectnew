@@ -15,6 +15,9 @@ interface Recommendation {
   category: string
   difficulty: string
   thumbnail?: string
+  ml_optimal_content_type?: string
+  ml_confidence?: number
+  compatibility_score?: number
   neurodiverseFeatures: {
     adhdFriendly: boolean
     autismFriendly: boolean
@@ -36,9 +39,30 @@ export default function AIRecommendations() {
   useEffect(() => {
     const fetchRecommendations = async () => {
       try {
-        // Fetch course recommendations
-        const response = await api.get('/adaptive/recommendations')
-        setRecommendations(response.data.slice(0, 3))
+        let recs: Recommendation[] = []
+
+        // Try AI-powered smart recommendations first (Gap 4)
+        try {
+          const smartRes = await api.post('/ai/smart-recommend', {
+            user_id: 'current', // backend identifies via JWT
+            conditions: [],
+            learning_style: 'visual',
+            limit: 3,
+          })
+          if (smartRes.data.success && smartRes.data.recommendations?.length) {
+            recs = smartRes.data.recommendations
+          }
+        } catch {
+          // AI service unavailable – fall through to simple query
+        }
+
+        // Fallback to simple MongoDB query
+        if (recs.length === 0) {
+          const response = await api.get('/adaptive/recommendations')
+          recs = response.data.slice(0, 3)
+        }
+
+        setRecommendations(recs)
         
         // Fetch AI-generated insights from the backend
         try {

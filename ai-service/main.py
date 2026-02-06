@@ -26,7 +26,7 @@ load_dotenv()
 app = FastAPI(
     title="NeuroLearn AI Service",
     description="AI-powered adaptive learning for neurodiverse students",
-    version="1.0.0"
+    version="2.0.0"
 )
 
 # CORS middleware
@@ -43,6 +43,13 @@ learning_model = AdaptiveLearningModel()
 content_recommender = ContentRecommender()
 difficulty_adjuster = DifficultyAdjuster()
 analytics_service = AnalyticsService()
+
+# SSE clients registry for push-based interventions (Gap 6)
+import asyncio
+from fastapi.responses import StreamingResponse
+import json as json_module
+
+sse_clients: Dict[str, asyncio.Queue] = {}  # userId -> event queue
 
 
 # Pydantic Models
@@ -100,7 +107,11 @@ class AnalyticsRequest(BaseModel):
 # Health check
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "service": "neurolearn-ai"}
+    return {
+        "status": "healthy",
+        "service": "neurolearn-ai",
+        "ml_models_loaded": learning_model.has_trained_models,
+    }
 
 
 # Adaptive content selection
@@ -809,6 +820,7 @@ class MouseTrackingAnalysisRequest(BaseModel):
 
 
 class CombinedBiometricRequest(BaseModel):
+    user_id: Optional[str] = None
     voice_metrics: Optional[Dict[str, Any]] = None
     eye_metrics: Optional[Dict[str, Any]] = None
     mouse_metrics: Optional[Dict[str, Any]] = None
@@ -980,7 +992,24 @@ async def get_biometric_intervention(request: CombinedBiometricRequest):
         if interventions:
             high_priority = [i for i in interventions if i.get('priority') == 'high']
             urgent_intervention = high_priority[0] if high_priority else interventions[0]
-        
+
+        # Push urgent interventions via SSE
+        user_id = request.user_id if hasattr(request, 'user_id') else None
+        if user_id and urgent_intervention and urgent_intervention.get('priority') == 'high':
+            if user_id in sse_clients:
+                event = {
+                    "type": "intervention",
+                    "data": {
+                        "intervention": urgent_intervention,
+                        "scores": combined_scores,
+                        "timestamp": datetime.now().isoformat()
+                    }
+                }
+                try:
+                    sse_clients[user_id].put_nowait(event)
+                except asyncio.QueueFull:
+                    pass  # Drop if client isn't consuming fast enough
+
         return {
             "success": True,
             "scores": combined_scores,
@@ -988,6 +1017,152 @@ async def get_biometric_intervention(request: CombinedBiometricRequest):
             "urgent_intervention": urgent_intervention,
             "requires_immediate_action": bool(urgent_intervention and urgent_intervention.get('priority') == 'high'),
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ─── Gap 1: ML Model Status & Retrain ─────────────────────────────────────────
+
+@app.get("/api/ai/model-status")
+async def model_status():
+    """Report ML model availability and metadata."""
+    return {
+        "ml_models_loaded": learning_model.has_trained_models,
+        "models": {
+            "engagement_model": learning_model._engagement_model is not None,
+            "difficulty_model": learning_model._difficulty_model is not None,
+            "content_classifier": learning_model._content_classifier is not None,
+            "scaler": learning_model._scaler is not None,
+        },
+        "model_dir": str(learning_model.MODEL_DIR) if hasattr(learning_model, 'MODEL_DIR') else None,
+    }
+
+
+@app.post("/api/ai/retrain")
+async def trigger_retrain():
+    """Trigger model retraining."""
+    try:
+        from retrain import retrain_model
+        result = retrain_model()
+        # Reload models after retraining
+        learning_model._load_ml_models()
+        return {"success": True, "result": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Retraining failed: {str(e)}")
+
+
+# ─── Gap 5: Auto-Generate Content Variants ────────────────────────────────────
+
+class ContentVariantRequest(BaseModel):
+    content: Dict[str, Any]
+    conditions: List[str] = []
+    target_styles: List[str] = ["visual", "auditory", "kinesthetic"]
+
+
+@app.post("/api/ai/generate-variants")
+async def generate_content_variants(request: ContentVariantRequest):
+    """Auto-generate simplified / visual / audio variants of lesson content."""
+    try:
+        # Flatten content dict to a string for the adapter
+        content_text = request.content.get("text", "") or str(request.content)
+        conditions = request.conditions if request.conditions else ["general"]
+
+        variants = {}
+        for style in request.target_styles:
+            adapted = content_generator.adapt_existing_content(
+                content=content_text,
+                conditions=conditions,
+                learning_styles=[style],
+            )
+            variants[style] = adapted
+
+        # Also produce a simplified version
+        simplified = content_generator.adapt_existing_content(
+            content=content_text,
+            conditions=["dyslexia"],
+            learning_styles=["reading"],
+        )
+        variants["simplified"] = simplified
+
+        return {"success": True, "variants": variants}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ─── Gap 6: SSE Event Stream ──────────────────────────────────────────────────
+
+@app.get("/api/ai/events/{user_id}")
+async def sse_event_stream(user_id: str):
+    """Server-Sent Events stream for real-time push interventions."""
+    queue: asyncio.Queue = asyncio.Queue(maxsize=50)
+    sse_clients[user_id] = queue
+
+    async def event_generator():
+        try:
+            # Send initial connection event
+            yield f"data: {json_module.dumps({'type': 'connected', 'userId': user_id})}\n\n"
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=30)
+                    yield f"data: {json_module.dumps(event)}\n\n"
+                except asyncio.TimeoutError:
+                    # Send keepalive
+                    yield f": keepalive\n\n"
+        except asyncio.CancelledError:
+            pass
+        finally:
+            sse_clients.pop(user_id, None)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# ─── Enhanced Recommendation Endpoint (Gap 4 backend) ─────────────────────────
+
+class SmartRecommendRequest(BaseModel):
+    user_id: str
+    conditions: List[str] = []
+    learning_style: str = "visual"
+    recent_topics: List[str] = []
+    performance_level: float = 0.5
+    limit: int = 10
+
+
+@app.post("/api/ai/smart-recommend")
+async def smart_recommendations(request: SmartRecommendRequest):
+    """AI-powered recommendations using the full recommender + ML models."""
+    try:
+        profile = {
+            "conditions": request.conditions,
+            "learning_style": request.learning_style,
+            "preferred_content_types": [request.learning_style],
+        }
+        # Use the recommender's get_recommendations (async)
+        result = await content_recommender.get_recommendations(
+            profile=profile,
+            completed=request.recent_topics,
+            goals=[],
+            available_time=60,
+        )
+        recs = result.get("recommendations", [])[:request.limit]
+
+        # Enhance with ML predictions if available
+        if learning_model.has_trained_models:
+            for rec in recs:
+                optimal_type = learning_model.predict_optimal_content_type(
+                    profile, [request.performance_level]
+                )
+                rec["ml_optimal_content_type"] = optimal_type
+                rec["ml_confidence"] = 0.8 if optimal_type != "standard" else 0.3
+
+        return {"success": True, "recommendations": recs}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
