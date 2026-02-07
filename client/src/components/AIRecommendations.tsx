@@ -9,19 +9,20 @@ import {
 } from '@heroicons/react/24/outline'
 
 interface Recommendation {
-  _id: string
+  _id?: string
+  course_id?: string
   title: string
-  description: string
-  category: string
-  difficulty: string
+  description?: string
+  category?: string
+  difficulty?: string
   thumbnail?: string
   ml_optimal_content_type?: string
   ml_confidence?: number
   compatibility_score?: number
-  neurodiverseFeatures: {
-    adhdFriendly: boolean
-    autismFriendly: boolean
-    dyslexiaFriendly: boolean
+  neurodiverseFeatures?: {
+    adhdFriendly?: boolean
+    autismFriendly?: boolean
+    dyslexiaFriendly?: boolean
   }
 }
 
@@ -141,13 +142,13 @@ export default function AIRecommendations() {
           <div className="space-y-3">
             {recommendations.map((course, index) => (
               <motion.div
-                key={course._id}
+                key={course._id || course.course_id || index}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.1 }}
               >
                 <Link
-                  to={`/courses/${course._id}`}
+                  to={`/courses/${course._id || course.course_id}`}
                   className="flex items-center gap-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-primary-300 dark:hover:border-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
                 >
                   <div className="w-12 h-12 bg-primary-100 dark:bg-primary-900 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -159,9 +160,9 @@ export default function AIRecommendations() {
                     </h4>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-xs text-gray-500 dark:text-gray-400">
-                        {course.category}
+                        {course.category || course.difficulty || 'Course'}
                       </span>
-                      {course.neurodiverseFeatures.adhdFriendly && (
+                      {course.neurodiverseFeatures?.adhdFriendly && (
                         <span className="px-1.5 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded">
                           ⚡ ADHD
                         </span>

@@ -773,6 +773,50 @@ async def generate_video_script(request: VideoScriptRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class FullVideoRequest(BaseModel):
+    """Request for creating a complete MP4 video file"""
+    topic: str
+    subject: str = "reading"
+    conditions: List[str] = []
+    learning_styles: List[str] = []
+    duration_minutes: int = 5
+    difficulty: str = "beginner"
+    output_filename: Optional[str] = None
+
+
+@app.post("/api/ai/create-full-video")
+async def create_full_video(request: FullVideoRequest):
+    """
+    Create a complete MP4 video file with slides and audio narration.
+    
+    This generates:
+    1. Slide images with visual content
+    2. Audio narration for each slide using TTS
+    3. A combined MP4 video file
+    
+    The video is adapted for neurodiverse learners based on conditions:
+    - ADHD: Progress indicators, short segments, encouragement
+    - Autism: Predictable format, clear structure
+    - Dyslexia: Highlighted keywords, slow pace
+    - Dyscalculia: Step-by-step visuals
+    
+    Returns the path to the generated MP4 file.
+    """
+    try:
+        result = await video_generator.create_full_video(
+            topic=request.topic,
+            subject=request.subject,
+            conditions=request.conditions,
+            learning_styles=request.learning_styles,
+            duration_minutes=request.duration_minutes,
+            difficulty=request.difficulty,
+            output_filename=request.output_filename
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/ai/generate-audio")
 async def generate_audio(data: Dict[str, Any]):
     """
@@ -799,6 +843,101 @@ async def get_video_avatars():
     return {
         "avatars": video_generator.avatars,
         "conditions_adaptations": video_generator.condition_adaptations
+    }
+
+
+class AvatarVideoRequest(BaseModel):
+    """Request for creating AI avatar videos using D-ID"""
+    topic: str
+    subject: str = "reading"
+    conditions: List[str] = []
+    learning_styles: List[str] = []
+    duration_minutes: int = 3
+    difficulty: str = "beginner"
+    avatar: str = "friendly_teacher"  # friendly_teacher, professional, young_tutor
+
+
+@app.post("/api/ai/create-avatar-video")
+async def create_avatar_video(request: AvatarVideoRequest):
+    """
+    Create an AI avatar video using D-ID.
+    
+    This generates a video with a realistic AI-generated talking avatar
+    that speaks the educational content.
+    
+    **Requirements:**
+    - D-ID API key must be set in environment variable DID_API_KEY
+    - Get your API key at https://www.d-id.com/
+    - The key should be base64 encoded (your_email:your_api_key)
+    
+    **Available Avatars:**
+    - friendly_teacher: Friendly female presenter
+    - professional: Professional male presenter
+    - young_tutor: Casual young female tutor
+    
+    **Usage:**
+    ```json
+    {
+        "topic": "Introduction to Fractions",
+        "subject": "math",
+        "conditions": ["adhd"],
+        "avatar": "friendly_teacher"
+    }
+    ```
+    
+    Returns video URL and local file path.
+    """
+    try:
+        # First generate the script
+        script = await video_generator.generate_video_script(
+            topic=request.topic,
+            subject=request.subject,
+            conditions=request.conditions,
+            learning_styles=request.learning_styles,
+            duration_minutes=request.duration_minutes,
+            difficulty=request.difficulty
+        )
+        
+        # Generate avatar video with D-ID
+        result = await video_generator.generate_video_with_did(
+            script=script,
+            avatar=request.avatar
+        )
+        
+        # If D-ID fails, return error with fallback suggestion
+        if not result.get("success"):
+            return {
+                "success": False,
+                "error": result.get("error", "Failed to create avatar video"),
+                "suggestion": "Try /api/ai/create-full-video for slide-based videos without an API key",
+                "fallback_endpoint": "/api/ai/create-full-video"
+            }
+        
+        return result
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/ai/did-status")
+async def check_did_status():
+    """
+    Check if D-ID API is configured and working.
+    """
+    import os
+    did_key = os.getenv("DID_API_KEY", "")
+    
+    return {
+        "configured": bool(did_key),
+        "key_length": len(did_key) if did_key else 0,
+        "setup_instructions": {
+            "step1": "Sign up at https://www.d-id.com/",
+            "step2": "Go to dashboard and copy your API key",
+            "step3": "Encode credentials: echo -n 'your_email:your_api_key' | base64",
+            "step4": "Set environment variable: DID_API_KEY=your_base64_encoded_key",
+            "step5": "Restart the AI service"
+        },
+        "available_avatars": list(video_generator.avatars.keys())
     }
 
 
@@ -1151,7 +1290,7 @@ async def smart_recommendations(request: SmartRecommendRequest):
             goals=[],
             available_time=60,
         )
-        recs = result.get("recommendations", [])[:request.limit]
+        recs = result.get("courses", [])[:request.limit]
 
         # Enhance with ML predictions if available
         if learning_model.has_trained_models:
