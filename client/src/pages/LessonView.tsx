@@ -484,7 +484,14 @@ export default function LessonView() {
 
     // Start audio monitoring for visual feedback
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 16000,
+        }
+      })
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
       const analyser = audioContext.createAnalyser()
       const microphone = audioContext.createMediaStreamSource(stream)
@@ -526,15 +533,15 @@ export default function LessonView() {
     // Letter anywhere
     const letterMatch = t.match(/\b([a-d])\b/i)
     if (letterMatch) return letterMatch[1].toUpperCase().charCodeAt(0) - 65
-    // Phonetic: A
-    if (/\b(ay|eh|hey|a)\b/i.test(t)) return 0
-    // Phonetic: B
-    if (/\b(be|bee|b)\b/i.test(t)) return 1
-    // Phonetic: C
-    if (/\b(see|sea|si|c)\b/i.test(t)) return 2
-    // Phonetic: D
-    if (/\b(dee|d)\b/i.test(t)) return 3
-    // Numbers
+    // Phonetic: A (+ NATO alphabet)
+    if (/\b(ay|eh|hey|a|alpha|alfa)\b/i.test(t)) return 0
+    // Phonetic: B (+ NATO alphabet)
+    if (/\b(be|bee|b|bravo)\b/i.test(t)) return 1
+    // Phonetic: C (+ NATO alphabet)
+    if (/\b(see|sea|si|c|charlie)\b/i.test(t)) return 2
+    // Phonetic: D (+ NATO alphabet)
+    if (/\b(dee|d|delta|last|final)\b/i.test(t)) return 3
+    // Numbers + ordinals
     if (/\b(one|1|first|1st)\b/i.test(t)) return 0
     if (/\b(two|2|second|2nd|to|too)\b/i.test(t)) return 1
     if (/\b(three|3|third|3rd)\b/i.test(t)) return 2
@@ -551,7 +558,7 @@ export default function LessonView() {
     recognition.continuous = true
     recognition.interimResults = true
     recognition.lang = 'en-US'
-    recognition.maxAlternatives = 5
+    recognition.maxAlternatives = 10
 
     let hasSelected = false
 
@@ -566,8 +573,8 @@ export default function LessonView() {
           const transcript = result[j].transcript.toLowerCase().trim()
           const confidence = result[j].confidence
           
-          // Accept with very low confidence threshold for interim, any confidence for final
-          if (result.isFinal || confidence > 0.3) {
+          // Accept with very low confidence threshold for laptop mics
+          if (result.isFinal || confidence > 0.1) {
             console.log(`Voice: "${transcript}" (confidence: ${confidence.toFixed(2)}, final: ${result.isFinal}, alt: ${j})`)
             
             const optionIndex = detectOptionFromText(transcript)

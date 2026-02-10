@@ -229,6 +229,7 @@ export function useBiometricTracking(
   const lastGazePosRef = useRef<{ x: number; y: number; time: number } | null>(null)
   const fixationStartRef = useRef<{ x: number; y: number; time: number } | null>(null)
   const contentAreaRef = useRef<DOMRect | null>(null)
+  const webgazerRef = useRef<any>(null)
 
   // Update interval
   const updateIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -422,7 +423,14 @@ export function useBiometricTracking(
     if (!enableVoice) return
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 16000,
+        }
+      })
       mediaStreamRef.current = stream
       setPermissions(prev => ({ ...prev, microphone: true }))
 
@@ -529,23 +537,28 @@ export function useBiometricTracking(
   // ==================== EYE TRACKING ====================
 
   const startEyeTracking = useCallback(async () => {
-    if (!enableEyeTracking || !window.webgazer) {
-      console.log('WebGazer not available or eye tracking disabled')
+    if (!enableEyeTracking) {
+      console.log('Eye tracking disabled')
       return
     }
 
     try {
+      // Dynamically import webgazer from npm (bundles MediaPipe WASM correctly)
+      const webgazerModule = await import('webgazer')
+      const webgazer = webgazerModule.default || webgazerModule
+      webgazerRef.current = webgazer
+
       setPermissions(prev => ({ ...prev, camera: true }))
 
       // Configure WebGazer
-      window.webgazer
+      webgazer
         .showPredictionPoints(false)
         .showVideo(false)
         .showFaceOverlay(false)
         .showFaceFeedbackBox(false)
 
       // Set up gaze listener
-      window.webgazer.setGazeListener((data, _elapsedTime) => {
+      webgazer.setGazeListener((data: { x: number; y: number } | null, _elapsedTime: number) => {
         if (!data) return
 
         const now = Date.now()
@@ -649,19 +662,21 @@ export function useBiometricTracking(
         lastGazePosRef.current = { x: data.x, y: data.y, time: now }
       })
 
-      await window.webgazer.begin()
+      await webgazer.begin()
       setIsCalibrated(true)
 
     } catch (error) {
       console.error('Failed to start eye tracking:', error)
+      console.warn('Eye tracking unavailable. WebGazer or MediaPipe assets may not have loaded correctly.')
       setPermissions(prev => ({ ...prev, camera: false }))
     }
   }, [enableEyeTracking])
 
   const stopEyeTracking = useCallback(() => {
     try {
-      if (window.webgazer && typeof window.webgazer.end === 'function') {
-        window.webgazer.end()
+      if (webgazerRef.current && typeof webgazerRef.current.end === 'function') {
+        webgazerRef.current.end()
+        webgazerRef.current = null
       }
     } catch (error) {
       // Silently ignore cleanup errors - WebGazer may not be fully initialized

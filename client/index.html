@@ -1,21 +1,23 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/neurolearn-icon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="NeuroLearn - AI-Powered Adaptive Learning Platform for Neurodiverse Students" />
-    <meta name="theme-color" content="#3b82f6" />
-    <title>NeuroLearn - Adaptive Learning</title>
-    <!-- Preload fonts for accessibility -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <!-- WebGazer.js for eye tracking -->
-    <script src="https://webgazer.cs.brown.edu/webgazer.js" defer></script>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/neurolearn-icon.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="NeuroLearn - AI-Powered Adaptive Learning Platform for Neurodiverse Students" />
+  <meta name="theme-color" content="#3b82f6" />
+  <title>NeuroLearn - Adaptive Learning</title>
+  <!-- Preload fonts for accessibility -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- WebGazer loaded via npm package for proper WASM bundling -->
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+
 </html>
