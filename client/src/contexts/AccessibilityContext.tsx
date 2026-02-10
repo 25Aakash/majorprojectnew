@@ -17,6 +17,7 @@ interface AccessibilityContextType {
   updateSettings: (newSettings: Partial<AccessibilitySettings>) => void
   resetSettings: () => void
   speak: (text: string) => void
+  forceSpeak: (text: string) => void
   stopSpeaking: () => void
 }
 
@@ -142,6 +143,17 @@ export function AccessibilityProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // Force speak - bypasses textToSpeech setting (for quiz voice assistant)
+  const forceSpeak = (text: string) => {
+    if (synth) {
+      synth.cancel() // Stop any current speech
+      const utterance = new SpeechSynthesisUtterance(text)
+      utterance.rate = 0.9 // Slightly slower for better comprehension
+      utterance.pitch = 1
+      synth.speak(utterance)
+    }
+  }
+
   const stopSpeaking = () => {
     if (synth) {
       synth.cancel()
@@ -155,6 +167,7 @@ export function AccessibilityProvider({ children }: { children: ReactNode }) {
         updateSettings,
         resetSettings,
         speak,
+        forceSpeak,
         stopSpeaking,
       }}
     >

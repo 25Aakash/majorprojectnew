@@ -89,10 +89,18 @@ router.post('/session', authMiddleware, async (req: AuthRequest, res: Response) 
     progress.lastAccessedAt = new Date();
     await progress.save();
 
-    // Award points
+    // Award points and sync streak to user model
+    // Use the maximum streak across all user's courses to preserve progress
+    const allUserProgress = await Progress.find({ userId: req.user?._id });
+    const maxStreak = Math.max(...allUserProgress.map(p => p.streakData?.currentStreak || 0));
+
     const pointsEarned = Math.floor(sessionDuration * 2) + (sessionData.focusScore > 80 ? 10 : 0);
     await User.findByIdAndUpdate(req.user?._id, {
       $inc: { 'rewards.points': pointsEarned },
+      $set: {
+        'rewards.streakDays': maxStreak,
+        'rewards.lastActiveDate': new Date()
+      }
     });
 
     res.json({
@@ -257,7 +265,7 @@ router.get('/:userId', async (req: Request, res: Response) => {
 
     // Aggregate progress data
     const lessonsCompleted = progress.reduce((acc, p) => acc + (p.completedLessons?.length || 0), 0);
-    const quizzesPassed = progress.reduce((acc, p) => 
+    const quizzesPassed = progress.reduce((acc, p) =>
       acc + (p.quizAttempts?.filter(q => (q.correctAnswers / q.totalQuestions) >= 0.7)?.length || 0), 0);
 
     const coursesProgress = progress.map(p => ({
@@ -317,7 +325,7 @@ router.get('/:userId/sessions', async (req: Request, res: Response) => {
       startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     }
 
-    const filteredSessions = allSessions.filter(s => 
+    const filteredSessions = allSessions.filter(s =>
       new Date(s.startTime || s.date) >= startDate
     );
 

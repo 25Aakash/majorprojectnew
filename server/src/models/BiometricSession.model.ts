@@ -8,23 +8,23 @@ export interface IVoiceMetrics {
   pauseFrequency: number; // pauses per minute
   averagePauseDuration: number; // milliseconds
   fillerWordCount: number; // "um", "uh", etc.
-  
+
   // Confidence indicators
   volumeLevel: number; // 0-100 average volume
   volumeVariability: number; // consistency
   pitchLevel: number; // relative pitch
   pitchVariability: number; // monotone vs expressive
-  
+
   // Stress indicators
   speechClarity: number; // 0-100
   hesitationPatterns: number; // hesitation score
   voiceTremor: number; // stress indicator 0-100
-  
+
   // Reading performance (for read-aloud exercises)
   readingAccuracy: number; // percentage correct
   selfCorrections: number; // number of self-corrections
   skippedWords: number;
-  
+
   // Timestamps for analysis
   samples: Array<{
     timestamp: Date;
@@ -42,12 +42,12 @@ export interface IEyeTrackingMetrics {
   fixationCount: number;
   saccadeCount: number; // rapid eye movements
   averageSaccadeLength: number; // pixels
-  
+
   // Reading patterns
   readingDirection: 'left-to-right' | 'right-to-left' | 'erratic';
   regressionCount: number; // backward eye movements (re-reading)
   lineSkipCount: number; // skipping lines
-  
+
   // Attention metrics
   contentFocusPercentage: number; // time looking at main content
   distractionZones: Array<{
@@ -55,7 +55,7 @@ export interface IEyeTrackingMetrics {
     duration: number;
     frequency: number;
   }>;
-  
+
   // Engagement indicators
   blinkRate: number; // blinks per minute
   pupilDilation: number; // relative size (if available)
@@ -66,7 +66,7 @@ export interface IEyeTrackingMetrics {
     duration: number;
     elementId?: string;
   }>;
-  
+
   // Heat map data for content areas
   attentionHeatmap: Array<{
     contentBlockId: string;
@@ -74,7 +74,7 @@ export interface IEyeTrackingMetrics {
     gazeCount: number;
     averageGazeDuration: number;
   }>;
-  
+
   // Calibration quality
   calibrationAccuracy: number;
   trackingConfidence: number;
@@ -87,12 +87,12 @@ export interface IMouseTrackingMetrics {
   averageSpeed: number; // pixels per second
   speedVariability: number;
   maxSpeed: number;
-  
+
   // Path analysis
   pathStraightness: number; // 0-1, how direct movements are
   directionChanges: number;
   erraticMovementCount: number; // sudden direction changes
-  
+
   // Hover behavior
   hoverEvents: Array<{
     elementId: string;
@@ -102,13 +102,13 @@ export interface IMouseTrackingMetrics {
   }>;
   averageHoverDuration: number;
   hoverAbandonRate: number;
-  
+
   // Click behavior
   clickCount: number;
   missClickCount: number; // clicks on non-interactive areas
   doubleClickCount: number;
   averageClickInterval: number;
-  
+
   // Frustration indicators
   rapidClickEvents: number; // clicking same area repeatedly
   backAndForthMovements: number;
@@ -117,7 +117,7 @@ export interface IMouseTrackingMetrics {
     startTime: number;
     duration: number;
   }>;
-  
+
   // Scroll behavior (enhanced)
   scrollPatterns: {
     totalScrollDistance: number;
@@ -127,7 +127,7 @@ export interface IMouseTrackingMetrics {
     scrollBackCount: number; // scrolling back to re-read
     averageScrollSpeed: number;
   };
-  
+
   // Content interaction mapping
   contentInteractions: Array<{
     contentBlockId: string;
@@ -144,12 +144,12 @@ export interface IBiometricSession extends Document {
   learningSessionId: mongoose.Types.ObjectId;
   lessonId: string;
   courseId: string;
-  
+
   // Tracking data
   voiceMetrics?: IVoiceMetrics;
   eyeTrackingMetrics?: IEyeTrackingMetrics;
   mouseTrackingMetrics: IMouseTrackingMetrics;
-  
+
   // Computed scores
   scores: {
     attentionScore: number; // 0-100
@@ -159,7 +159,7 @@ export interface IBiometricSession extends Document {
     frustrationLevel: number; // 0-100
     focusQuality: number; // 0-100
   };
-  
+
   // Analysis results
   detectedPatterns: Array<{
     pattern: string;
@@ -167,7 +167,7 @@ export interface IBiometricSession extends Document {
     timestamp: Date;
     recommendation?: string;
   }>;
-  
+
   // Permission status
   permissions: {
     voiceEnabled: boolean;
@@ -175,7 +175,7 @@ export interface IBiometricSession extends Document {
     mouseTrackingEnabled: boolean;
     webcamEnabled: boolean;
   };
-  
+
   // Session metadata
   startTime: Date;
   endTime?: Date;
@@ -186,7 +186,7 @@ export interface IBiometricSession extends Document {
     hasWebcam: boolean;
     hasMicrophone: boolean;
   };
-  
+
   // Flagged for review
   flaggedForReview: boolean;
   reviewNotes?: string;
@@ -296,14 +296,14 @@ const MouseTrackingMetricsSchema = new Schema({
 
 const BiometricSessionSchema = new Schema({
   userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-  learningSessionId: { type: Schema.Types.ObjectId, ref: 'LearningSession', required: true },
+  learningSessionId: { type: Schema.Types.ObjectId, ref: 'LearningSession', required: false },
   lessonId: { type: String, required: true },
   courseId: { type: String, required: true },
-  
+
   voiceMetrics: VoiceMetricsSchema,
   eyeTrackingMetrics: EyeTrackingMetricsSchema,
   mouseTrackingMetrics: { type: MouseTrackingMetricsSchema, default: () => ({}) },
-  
+
   scores: {
     attentionScore: { type: Number, default: 50 },
     engagementScore: { type: Number, default: 50 },
@@ -312,24 +312,24 @@ const BiometricSessionSchema = new Schema({
     frustrationLevel: { type: Number, default: 50 },
     focusQuality: { type: Number, default: 50 },
   },
-  
+
   detectedPatterns: [{
     pattern: String,
     confidence: Number,
     timestamp: Date,
     recommendation: String,
   }],
-  
+
   permissions: {
     voiceEnabled: { type: Boolean, default: false },
     eyeTrackingEnabled: { type: Boolean, default: false },
     mouseTrackingEnabled: { type: Boolean, default: true },
     webcamEnabled: { type: Boolean, default: false },
   },
-  
+
   startTime: { type: Date, default: Date.now },
   endTime: Date,
-  
+
   deviceInfo: {
     screenWidth: Number,
     screenHeight: Number,
@@ -337,7 +337,7 @@ const BiometricSessionSchema = new Schema({
     hasWebcam: Boolean,
     hasMicrophone: Boolean,
   },
-  
+
   flaggedForReview: { type: Boolean, default: false },
   reviewNotes: String,
 }, {

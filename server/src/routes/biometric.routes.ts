@@ -62,7 +62,7 @@ router.patch('/sessions/:sessionId/voice', authMiddleware, async (req: Request, 
 
     const session = await BiometricSession.findByIdAndUpdate(
       sessionId,
-      { 
+      {
         $push: { 'voiceMetrics.samples': voiceMetrics.sample },
         $set: {
           'voiceMetrics.averagePace': voiceMetrics.averagePace,
@@ -92,7 +92,7 @@ router.patch('/sessions/:sessionId/eye-tracking', authMiddleware, async (req: Re
 
     const session = await BiometricSession.findByIdAndUpdate(
       sessionId,
-      { 
+      {
         $set: { eyeTrackingMetrics },
       },
       { new: true }
@@ -117,7 +117,7 @@ router.patch('/sessions/:sessionId/mouse', authMiddleware, async (req: Request, 
 
     const session = await BiometricSession.findByIdAndUpdate(
       sessionId,
-      { 
+      {
         $set: { mouseMetrics },
       },
       { new: true }
@@ -142,7 +142,7 @@ router.patch('/sessions/:sessionId/end', authMiddleware, async (req: Request, re
 
     const session = await BiometricSession.findByIdAndUpdate(
       sessionId,
-      { 
+      {
         $set: {
           endTime: new Date(),
           analysisResults,
@@ -228,11 +228,11 @@ router.get('/profile/:userId', authMiddleware, async (req: Request, res: Respons
 function calculateAverageSessionDuration(sessions: any[]): number {
   const completedSessions = sessions.filter(s => s.endTime)
   if (completedSessions.length === 0) return 0
-  
+
   const totalDuration = completedSessions.reduce((sum, s) => {
     return sum + (new Date(s.endTime).getTime() - new Date(s.startTime).getTime())
   }, 0)
-  
+
   return totalDuration / completedSessions.length / 1000 / 60 // in minutes
 }
 
@@ -296,7 +296,7 @@ function calculateLearningIndicators(sessions: any[]): any {
 
 function generateProfileRecommendations(sessions: any[]): string[] {
   const recommendations: string[] = []
-  
+
   // Analyze recent sessions for patterns
   const recentSessions = sessions.slice(0, 5)
   const hasVoiceData = recentSessions.some(s => s.voiceMetrics?.confidenceScore > 0)
@@ -337,6 +337,10 @@ router.post('/persist', authMiddleware, async (req: Request, res: Response) => {
     const userId = (req as any).user?.userId
     const { lessonId, courseId, learningSessionId, voiceMetrics, eyeMetrics, mouseMetrics, scores } = req.body
 
+    if (!userId || !lessonId) {
+      return res.status(400).json({ error: 'Missing required fields: userId or lessonId' })
+    }
+
     // Find or create session for this lesson
     let session = await BiometricSession.findOne({
       userId,
@@ -349,43 +353,123 @@ router.post('/persist', authMiddleware, async (req: Request, res: Response) => {
         userId,
         lessonId,
         courseId: courseId || 'unknown',
-        learningSessionId,
+        learningSessionId: learningSessionId || undefined,
         startTime: new Date(),
-        permissions: { voiceEnabled: !!voiceMetrics, eyeTrackingEnabled: !!eyeMetrics, mouseTrackingEnabled: true, webcamEnabled: false },
-        voiceMetrics: { samples: [], averagePace: 0, pitchLevel: 0, speechClarity: 0 },
-        eyeTrackingMetrics: {
-          calibrationAccuracy: 0, gazePath: [], attentionHeatmap: [], distractionZones: [],
+        permissions: {
+          voiceEnabled: !!voiceMetrics,
+          eyeTrackingEnabled: !!eyeMetrics,
+          mouseTrackingEnabled: true,
+          webcamEnabled: false
         },
+        voiceMetrics: voiceMetrics ? {
+          averagePace: voiceMetrics.averagePace || 0,
+          paceVariability: voiceMetrics.paceVariability || 0,
+          pauseFrequency: voiceMetrics.pauseFrequency || 0,
+          averagePauseDuration: voiceMetrics.averagePauseDuration || 0,
+          fillerWordCount: voiceMetrics.fillerWordCount || 0,
+          volumeLevel: voiceMetrics.volumeLevel || 50,
+          volumeVariability: voiceMetrics.volumeVariability || 0,
+          pitchLevel: voiceMetrics.averagePitch || 50,
+          pitchVariability: 0,
+          speechClarity: voiceMetrics.speechClarity || 50,
+          hesitationPatterns: voiceMetrics.hesitationPatterns || 0,
+          voiceTremor: 0,
+          readingAccuracy: 0,
+          selfCorrections: 0,
+          skippedWords: 0,
+          samples: voiceMetrics.samples || []
+        } : undefined,
+        eyeTrackingMetrics: eyeMetrics ? {
+          averageFixationDuration: eyeMetrics.averageFixationDuration || 0,
+          fixationCount: eyeMetrics.fixationCount || 0,
+          saccadeCount: eyeMetrics.saccadeCount || 0,
+          averageSaccadeLength: 0,
+          readingDirection: 'left-to-right',
+          regressionCount: eyeMetrics.regressionCount || 0,
+          lineSkipCount: eyeMetrics.lineSkipCount || 0,
+          contentFocusPercentage: eyeMetrics.contentFocusPercentage || 0,
+          distractionZones: eyeMetrics.distractionZones || [],
+          blinkRate: eyeMetrics.blinkRate || 0,
+          pupilDilation: 0,
+          gazePath: eyeMetrics.gazePath || [],
+          attentionHeatmap: eyeMetrics.attentionHeatmap || [],
+          calibrationAccuracy: eyeMetrics.calibrationAccuracy || 0,
+          trackingConfidence: eyeMetrics.trackingConfidence || 0,
+        } : undefined,
         mouseTrackingMetrics: {
-          hoverEvents: [], idleEvents: [],
+          totalDistance: mouseMetrics?.totalDistance || 0,
+          averageSpeed: mouseMetrics?.averageSpeed || 0,
+          speedVariability: mouseMetrics?.speedVariability || 0,
+          maxSpeed: mouseMetrics?.maxSpeed || 0,
+          pathStraightness: mouseMetrics?.pathStraightness || 0,
+          directionChanges: mouseMetrics?.directionChanges || 0,
+          erraticMovementCount: mouseMetrics?.erraticMovementCount || 0,
+          hoverEvents: mouseMetrics?.hoverEvents || [],
+          averageHoverDuration: 0,
+          hoverAbandonRate: 0,
+          clickCount: mouseMetrics?.clickCount || 0,
+          missClickCount: mouseMetrics?.missClickCount || 0,
+          doubleClickCount: 0,
+          averageClickInterval: 0,
+          rapidClickEvents: mouseMetrics?.rapidClickEvents || 0,
+          backAndForthMovements: mouseMetrics?.backAndForthMovements || 0,
+          idleTimeTotal: mouseMetrics?.idleTimeTotal || 0,
+          idleEvents: [],
+          scrollPatterns: {
+            totalScrollDistance: mouseMetrics?.scrollPatterns?.totalScrollDistance || 0,
+            scrollUpCount: mouseMetrics?.scrollPatterns?.scrollUpCount || 0,
+            scrollDownCount: mouseMetrics?.scrollPatterns?.scrollDownCount || 0,
+            rapidScrollCount: mouseMetrics?.scrollPatterns?.rapidScrollCount || 0,
+            scrollBackCount: mouseMetrics?.scrollPatterns?.scrollBackCount || 0,
+            averageScrollSpeed: mouseMetrics?.scrollPatterns?.averageSpeed || 0,
+          },
+          contentInteractions: []
         },
+        scores: {
+          attentionScore: scores?.attention || 50,
+          engagementScore: scores?.engagement || 50,
+          stressLevel: scores?.stress || 50,
+          confidenceLevel: scores?.confidence || 50,
+          frustrationLevel: scores?.frustration || 50,
+          focusQuality: scores?.focusQuality || 50,
+        },
+        detectedPatterns: [],
+        deviceInfo: {
+          screenWidth: 0,
+          screenHeight: 0,
+          browser: '',
+          hasWebcam: !!eyeMetrics,
+          hasMicrophone: !!voiceMetrics,
+        },
+        flaggedForReview: false,
       })
-    }
-
-    // Update metrics
-    if (voiceMetrics && session.voiceMetrics) {
-      session.voiceMetrics.averagePace = voiceMetrics.averagePace ?? session.voiceMetrics.averagePace
-      session.voiceMetrics.pitchLevel = voiceMetrics.averagePitch ?? session.voiceMetrics.pitchLevel
-      session.voiceMetrics.speechClarity = voiceMetrics.confidenceScore ?? session.voiceMetrics.speechClarity
-    }
-    if (mouseMetrics) {
-      session.mouseTrackingMetrics.scrollPatterns = {
-        totalScrollDistance: mouseMetrics.totalScrollDistance ?? 0,
-        averageScrollSpeed: mouseMetrics.averageSpeed ?? 0,
-        scrollUpCount: 0,
-        scrollDownCount: 0,
-        rapidScrollCount: 0,
-        scrollBackCount: mouseMetrics.scrollReversals ?? 0,
+    } else {
+      // Update existing session
+      if (voiceMetrics && session.voiceMetrics) {
+        session.voiceMetrics.averagePace = voiceMetrics.averagePace ?? session.voiceMetrics.averagePace
+        session.voiceMetrics.pitchLevel = voiceMetrics.averagePitch ?? session.voiceMetrics.pitchLevel
+        session.voiceMetrics.speechClarity = voiceMetrics.speechClarity ?? session.voiceMetrics.speechClarity
       }
-    }
-    if (scores) {
-      session.scores = {
-        attentionScore: scores.attention ?? 0,
-        engagementScore: scores.engagement ?? 0,
-        stressLevel: scores.stress ?? 0,
-        confidenceLevel: scores.confidence ?? 0,
-        frustrationLevel: scores.frustration ?? 0,
-        focusQuality: scores.focus ?? 0,
+      if (eyeMetrics && session.eyeTrackingMetrics) {
+        session.eyeTrackingMetrics.contentFocusPercentage = eyeMetrics.contentFocusPercentage ?? session.eyeTrackingMetrics.contentFocusPercentage
+        session.eyeTrackingMetrics.fixationCount = eyeMetrics.fixationCount ?? session.eyeTrackingMetrics.fixationCount
+      }
+      if (mouseMetrics && session.mouseTrackingMetrics) {
+        session.mouseTrackingMetrics.totalDistance = mouseMetrics.totalDistance ?? session.mouseTrackingMetrics.totalDistance
+        session.mouseTrackingMetrics.averageSpeed = mouseMetrics.averageSpeed ?? session.mouseTrackingMetrics.averageSpeed
+        if (mouseMetrics.scrollPatterns) {
+          session.mouseTrackingMetrics.scrollPatterns.totalScrollDistance = mouseMetrics.scrollPatterns.totalScrollDistance ?? session.mouseTrackingMetrics.scrollPatterns.totalScrollDistance
+        }
+      }
+      if (scores) {
+        session.scores = {
+          attentionScore: scores.attention ?? session.scores.attentionScore,
+          engagementScore: scores.engagement ?? session.scores.engagementScore,
+          stressLevel: scores.stress ?? session.scores.stressLevel,
+          confidenceLevel: scores.confidence ?? session.scores.confidenceLevel,
+          frustrationLevel: scores.frustration ?? session.scores.frustrationLevel,
+          focusQuality: scores.focusQuality ?? session.scores.focusQuality,
+        }
       }
     }
 
@@ -393,7 +477,12 @@ router.post('/persist', authMiddleware, async (req: Request, res: Response) => {
     res.json({ success: true, sessionId: session._id })
   } catch (error) {
     console.error('Error persisting biometric data:', error)
-    res.status(500).json({ error: 'Failed to persist biometric data' })
+    // Return detailed error for debugging
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    res.status(500).json({
+      error: 'Failed to persist biometric data',
+      details: errorMessage
+    })
   }
 })
 

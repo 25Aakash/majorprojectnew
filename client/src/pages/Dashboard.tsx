@@ -123,6 +123,7 @@ export default function Dashboard() {
           api.get('/adaptive/insights'),
         ])
         setProgress(progressRes.data)
+        // Backend now returns {insights: {...}, insightsArray: [...]}
         setInsights(insightsRes.data.insights)
       } catch (error) {
         console.error('Error fetching dashboard data:', error)

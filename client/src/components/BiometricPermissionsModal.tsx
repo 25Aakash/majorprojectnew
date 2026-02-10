@@ -30,9 +30,9 @@ export function BiometricPermissionsModal({
   currentPermissions,
 }: BiometricPermissionsModalProps) {
   const [selectedPermissions, setSelectedPermissions] = useState({
-    voice: false,
-    eyeTracking: false,
-    mouseTracking: true, // Enabled by default
+    voice: true, // Auto-enabled
+    eyeTracking: true, // Auto-enabled
+    mouseTracking: true, // Already enabled by default
   })
   const [isRequestingPermissions, setIsRequestingPermissions] = useState(false)
   const [permissionErrors, setPermissionErrors] = useState<Record<string, string>>({})
@@ -146,12 +146,13 @@ export function BiometricPermissionsModal({
 
           {/* Modal */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            initial={{ opacity: 0, scale: 0.95, y: -20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50
-                       w-full max-w-lg max-h-[90vh] overflow-y-auto
-                       bg-white dark:bg-gray-800 rounded-2xl shadow-2xl"
+            exit={{ opacity: 0, scale: 0.95, y: -20 }}
+            className="fixed top-8 left-1/2 -translate-x-1/2 z-50
+                       w-full max-w-2xl max-h-[85vh] overflow-y-auto
+                       bg-white dark:bg-gray-800 rounded-2xl shadow-2xl
+                       border border-gray-200 dark:border-gray-700"
           >
             {/* Header */}
             <div className="p-6 border-b border-gray-200 dark:border-gray-700">

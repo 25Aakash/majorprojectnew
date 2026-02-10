@@ -39,36 +39,16 @@ export default function AIRecommendations() {
   useEffect(() => {
     const fetchRecommendations = async () => {
       try {
-        let recs: Recommendation[] = []
-
-        // Try AI-powered smart recommendations first (Gap 4)
-        try {
-          const smartRes = await api.post('/ai/smart-recommend', {
-            user_id: 'current', // backend identifies via JWT
-            conditions: [],
-            learning_style: 'visual',
-            limit: 3,
-          })
-          if (smartRes.data.success && smartRes.data.recommendations?.length) {
-            recs = smartRes.data.recommendations
-          }
-        } catch {
-          // AI service unavailable – fall through to simple query
-        }
-
-        // Fallback to simple MongoDB query
-        if (recs.length === 0) {
-          const response = await api.get('/adaptive/recommendations')
-          recs = response.data.slice(0, 3)
-        }
-
+        // Fetch course recommendations
+        const response = await api.get('/adaptive/recommendations')
+        const recs = response.data.slice(0, 3)
         setRecommendations(recs)
         
         // Fetch AI-generated insights from the backend
         try {
           const insightsResponse = await api.get('/adaptive/insights')
-          if (insightsResponse.data && insightsResponse.data.length > 0) {
-            setInsights(insightsResponse.data)
+          if (insightsResponse.data?.insightsArray && insightsResponse.data.insightsArray.length > 0) {
+            setInsights(insightsResponse.data.insightsArray)
           } else {
             // Fallback to default insights if API returns empty
             setInsights([

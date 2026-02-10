@@ -63,7 +63,7 @@ interface Lesson {
 export default function LessonView() {
   const { courseId, lessonId } = useParams<{ courseId: string; lessonId: string }>()
   const navigate = useNavigate()
-  const { settings, speak, stopSpeaking } = useAccessibility()
+  const { settings, speak, forceSpeak, stopSpeaking } = useAccessibility()
   
   const [lesson, setLesson] = useState<Lesson | null>(null)
   const [loading, setLoading] = useState(true)
@@ -87,6 +87,14 @@ export default function LessonView() {
   const [quizScore, setQuizScore] = useState(0)
   const [answeredQuestions, setAnsweredQuestions] = useState<boolean[]>([])
   const [showExplanation, setShowExplanation] = useState(false)
+  const [isQuizSpeaking, setIsQuizSpeaking] = useState(false)
+  const [isVoiceListening, setIsVoiceListening] = useState(false)
+  const [autoPlayQuiz, setAutoPlayQuiz] = useState(true) // Auto-play enabled by default
+  const [voiceVolume, setVoiceVolume] = useState(0) // Track microphone volume
+  const recognitionRef = useRef<any>(null)
+  const speechEndTimeoutRef = useRef<any>(null)
+  const audioContextRef = useRef<any>(null)
+  const analyserRef = useRef<any>(null)
 
   // Adaptive learning tracking
   const {
@@ -182,6 +190,18 @@ export default function LessonView() {
     }
   }
 
+  // Auto-show biometric permissions modal on lesson load (once per session)
+  useEffect(() => {
+    if (lesson && !hasAskedPermissions) {
+      const timer = setTimeout(() => {
+        setShowBiometricModal(true)
+        setHasAskedPermissions(true)
+        localStorage.setItem('neurolearn_biometric_asked', 'true')
+      }, 1500) // Show after 1.5 seconds to let page load
+      return () => clearTimeout(timer)
+    }
+  }, [lesson, hasAskedPermissions])
+
   // Intervention modal state
   const [showIntervention, setShowIntervention] = useState(false)
   const [interventionType, setInterventionType] = useState<'break' | 'simplify' | 'alternative' | 'calming' | 'encouragement'>('break')
@@ -235,6 +255,52 @@ export default function LessonView() {
       window.removeEventListener('keydown', handleInteraction)
       window.removeEventListener('scroll', handleInteraction)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [])
+
+  // Auto-play quiz when question loads or changes (only when quiz is active)
+  useEffect(() => {
+    if (lesson?.quiz && autoPlayQuiz && showQuiz && !answeredQuestions[currentQuestionIndex]) {
+      const timer = setTimeout(() => {
+        handleQuizAutoPlay()
+      }, 800)
+      return () => clearTimeout(timer)
+    }
+  }, [currentQuestionIndex, lesson?.quiz, autoPlayQuiz, showQuiz, answeredQuestions])
+
+  // Keyboard shortcuts for quiz answers (A/B/C/D or 1/2/3/4)
+  useEffect(() => {
+    if (!showQuiz || !lesson?.quiz) return
+    
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (answeredQuestions[currentQuestionIndex]) return
+      
+      const key = e.key.toLowerCase()
+      let optionIndex = -1
+      
+      if (['a', 'b', 'c', 'd'].includes(key)) {
+        optionIndex = key.charCodeAt(0) - 97
+      } else if (['1', '2', '3', '4'].includes(key)) {
+        optionIndex = parseInt(key) - 1
+      }
+      
+      if (optionIndex >= 0 && lesson.quiz && optionIndex < lesson.quiz.questions[currentQuestionIndex].options.length) {
+        const letter = String.fromCharCode(65 + optionIndex)
+        handleAnswerSelect(optionIndex)
+        forceSpeak(`Selected option ${letter}`)
+      }
+    }
+    
+    window.addEventListener('keydown', handleKeyPress)
+    return () => window.removeEventListener('keydown', handleKeyPress)
+  }, [showQuiz, lesson?.quiz, currentQuestionIndex, answeredQuestions])
+
+  // Cleanup speech timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (speechEndTimeoutRef.current) {
+        clearTimeout(speechEndTimeoutRef.current)
+      }
     }
   }, [])
 
@@ -358,6 +424,208 @@ export default function LessonView() {
         setIsSpeaking(true)
       }
     }
+  }
+
+  // Auto-play quiz: speak question then open mic
+  const handleQuizAutoPlay = () => {
+    if (!lesson?.quiz) return
+    
+    const currentQuestion = lesson.quiz.questions[currentQuestionIndex]
+    const questionText = `Question ${currentQuestionIndex + 1}: ${currentQuestion.question}.`
+    const optionsText = currentQuestion.options
+      .map((option, idx) => `Option ${String.fromCharCode(65 + idx)}: ${option}.`)
+      .join(' ')
+    const fullText = `${questionText} ${optionsText}`
+    
+    setIsQuizSpeaking(true)
+    forceSpeak(fullText)
+    
+    // Estimate speech duration (rough: 150 words per minute)
+    const wordCount = fullText.split(' ').length
+    const estimatedDuration = (wordCount / 150) * 60 * 1000 // Convert to milliseconds
+    
+    // Auto-open mic after speech finishes
+    speechEndTimeoutRef.current = setTimeout(() => {
+      setIsQuizSpeaking(false)
+      if (!answeredQuestions[currentQuestionIndex]) {
+        startVoiceRecognition()
+      }
+    }, estimatedDuration + 500) // Add 500ms buffer
+  }
+
+  const handleQuizTextToSpeech = () => {
+    if (isQuizSpeaking) {
+      stopSpeaking()
+      if (speechEndTimeoutRef.current) {
+        clearTimeout(speechEndTimeoutRef.current)
+      }
+      setIsQuizSpeaking(false)
+    } else {
+      if (lesson?.quiz) {
+        const currentQuestion = lesson.quiz.questions[currentQuestionIndex]
+        // Format: "Question 1: [question]. Option A: [option1]. Option B: [option2]..."
+        const questionText = `Question ${currentQuestionIndex + 1}: ${currentQuestion.question}.`
+        const optionsText = currentQuestion.options
+          .map((option, idx) => `Option ${String.fromCharCode(65 + idx)}: ${option}.`)
+          .join(' ')
+        const fullText = `${questionText} ${optionsText}`
+        forceSpeak(fullText) // Use forceSpeak to bypass global textToSpeech setting
+        setIsQuizSpeaking(true)
+      }
+    }
+  }
+
+  // Voice recognition for quiz answers
+  const startVoiceRecognition = async () => {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      alert('Voice recognition is not supported in your browser. Please use Chrome or Edge.')
+      return
+    }
+
+    // Start audio monitoring for visual feedback
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+      const analyser = audioContext.createAnalyser()
+      const microphone = audioContext.createMediaStreamSource(stream)
+      
+      analyser.fftSize = 256
+      microphone.connect(analyser)
+      
+      audioContextRef.current = audioContext
+      analyserRef.current = analyser
+      
+      // Monitor volume
+      const dataArray = new Uint8Array(analyser.frequencyBinCount)
+      const checkVolume = () => {
+        if (analyserRef.current) {
+          analyser.getByteFrequencyData(dataArray)
+          const average = dataArray.reduce((a, b) => a + b) / dataArray.length
+          setVoiceVolume(Math.min(100, average * 2)) // Amplify for visibility
+          requestAnimationFrame(checkVolume)
+        }
+      }
+      checkVolume()
+    } catch (err) {
+      console.warn('Could not start audio monitoring:', err)
+    }
+
+    setIsVoiceListening(true)
+    startRecognitionInstance()
+  }
+
+  // Helper to detect option from transcript
+  const detectOptionFromText = (transcript: string): number => {
+    const t = transcript.toLowerCase().trim()
+    
+    // Single letter
+    if (/^[a-d]$/i.test(t)) return t.toUpperCase().charCodeAt(0) - 65
+    // "option X"
+    const optMatch = t.match(/option\s*([a-d])/i)
+    if (optMatch) return optMatch[1].toUpperCase().charCodeAt(0) - 65
+    // Letter anywhere
+    const letterMatch = t.match(/\b([a-d])\b/i)
+    if (letterMatch) return letterMatch[1].toUpperCase().charCodeAt(0) - 65
+    // Phonetic: A
+    if (/\b(ay|eh|hey|a)\b/i.test(t)) return 0
+    // Phonetic: B
+    if (/\b(be|bee|b)\b/i.test(t)) return 1
+    // Phonetic: C
+    if (/\b(see|sea|si|c)\b/i.test(t)) return 2
+    // Phonetic: D
+    if (/\b(dee|d)\b/i.test(t)) return 3
+    // Numbers
+    if (/\b(one|1|first|1st)\b/i.test(t)) return 0
+    if (/\b(two|2|second|2nd|to|too)\b/i.test(t)) return 1
+    if (/\b(three|3|third|3rd)\b/i.test(t)) return 2
+    if (/\b(four|4|fourth|4th|for)\b/i.test(t)) return 3
+    
+    return -1
+  }
+
+  // Start a single recognition instance
+  const startRecognitionInstance = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    const recognition = new SpeechRecognition()
+    
+    recognition.continuous = true
+    recognition.interimResults = true
+    recognition.lang = 'en-US'
+    recognition.maxAlternatives = 5
+
+    let hasSelected = false
+
+    recognition.onresult = (event: any) => {
+      if (hasSelected) return
+      
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i]
+        
+        // Check all alternatives for a match
+        for (let j = 0; j < result.length; j++) {
+          const transcript = result[j].transcript.toLowerCase().trim()
+          const confidence = result[j].confidence
+          
+          // Accept with very low confidence threshold for interim, any confidence for final
+          if (result.isFinal || confidence > 0.3) {
+            console.log(`Voice: "${transcript}" (confidence: ${confidence.toFixed(2)}, final: ${result.isFinal}, alt: ${j})`)
+            
+            const optionIndex = detectOptionFromText(transcript)
+            
+            if (optionIndex >= 0 && lesson?.quiz && optionIndex < lesson.quiz.questions[currentQuestionIndex].options.length) {
+              hasSelected = true
+              const letter = String.fromCharCode(65 + optionIndex)
+              console.log('✅ Selecting option:', letter)
+              handleAnswerSelect(optionIndex)
+              forceSpeak(`Selected option ${letter}`)
+              recognition.stop()
+              return
+            }
+          }
+        }
+      }
+    }
+
+    recognition.onerror = (event: any) => {
+      if (event.error === 'no-speech' || event.error === 'aborted') {
+        // Auto-restart silently
+        console.log('Recognition ended, auto-restarting...')
+      } else if (event.error === 'not-allowed') {
+        alert('Microphone access denied. Please allow microphone in browser settings.')
+        setIsVoiceListening(false)
+      }
+    }
+
+    recognition.onend = () => {
+      // Auto-restart if still listening and no answer selected
+      if (!hasSelected && isVoiceListening) {
+        console.log('Recognition ended, restarting...')
+        try {
+          recognition.start()
+        } catch (e) {
+          // If restart fails, create a new instance
+          setTimeout(() => {
+            if (isVoiceListening) startRecognitionInstance()
+          }, 300)
+        }
+      }
+    }
+
+    recognitionRef.current = recognition
+    recognition.start()
+  }
+
+  const stopVoiceRecognition = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop()
+      setIsVoiceListening(false)
+    }
+    // Stop audio monitoring
+    if (audioContextRef.current) {
+      audioContextRef.current.close()
+      audioContextRef.current = null
+    }
+    setVoiceVolume(0)
   }
 
   const handleComplete = async () => {
@@ -580,6 +848,12 @@ export default function LessonView() {
   }
 
   const submitAnswer = () => {
+    // Stop quiz voice if speaking
+    if (isQuizSpeaking) {
+      stopSpeaking()
+      setIsQuizSpeaking(false)
+    }
+    
     const newAnswered = [...answeredQuestions]
     newAnswered[currentQuestionIndex] = true
     setAnsweredQuestions(newAnswered)
@@ -594,6 +868,12 @@ export default function LessonView() {
   }
 
   const nextQuestion = () => {
+    // Stop quiz voice if speaking
+    if (isQuizSpeaking) {
+      stopSpeaking()
+      setIsQuizSpeaking(false)
+    }
+    
     setShowExplanation(false)
     if (lesson?.quiz && currentQuestionIndex < lesson.quiz.questions.length - 1) {
       setCurrentQuestionIndex(prev => prev + 1)
@@ -699,10 +979,76 @@ export default function LessonView() {
           <span className="text-sm text-gray-500 dark:text-gray-400">
             Question {currentQuestionIndex + 1} of {lesson.quiz.questions.length}
           </span>
-          <span className="text-sm font-medium text-primary-600">
-            {currentQuestion.points} points
-          </span>
+          <div className="flex items-center gap-3">
+            {/* Voice Assistant Button */}
+            <button
+              onClick={handleQuizTextToSpeech}
+              className={`p-2 rounded-lg transition-colors ${
+                isQuizSpeaking 
+                  ? 'bg-primary-100 text-primary-600 dark:bg-primary-900 dark:text-primary-400' 
+                  : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+              }`}
+              aria-label={isQuizSpeaking ? 'Stop reading question' : 'Read question aloud'}
+              title={isQuizSpeaking ? 'Stop reading' : 'Read question and options aloud'}
+            >
+              {isQuizSpeaking ? (
+                <SpeakerXMarkIcon className="h-5 w-5" />
+              ) : (
+                <SpeakerWaveIcon className="h-5 w-5" />
+              )}
+            </button>
+            
+            {/* Voice Recognition Button */}
+            {!answeredQuestions[currentQuestionIndex] && (
+              <button
+                onClick={isVoiceListening ? stopVoiceRecognition : startVoiceRecognition}
+                className={`p-2 rounded-lg transition-colors ${
+                  isVoiceListening 
+                    ? 'bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-400 animate-pulse' 
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                }`}
+                aria-label={isVoiceListening ? 'Stop listening' : 'Speak your answer'}
+                title={isVoiceListening ? 'Listening... Say A, B, C, or D' : 'Click to speak your answer (A, B, C, or D)'}
+              >
+                <MicrophoneIcon className="h-5 w-5" />
+              </button>
+            )}
+            
+            <span className="text-sm font-medium text-primary-600">
+              {currentQuestion.points} points
+            </span>
+          </div>
         </div>
+
+        {/* Voice Listening Hint */}
+        {isVoiceListening && (
+          <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border-2 border-red-300 dark:border-red-700 rounded-lg animate-pulse">
+            <div className="flex items-center gap-2 mb-2">
+              <MicrophoneIcon className="h-5 w-5 text-red-600 dark:text-red-400" />
+              <span className="text-sm font-medium text-red-700 dark:text-red-300">
+                🎤 Listening... Say or press: A, B, C, or D
+              </span>
+            </div>
+            {/* Volume Indicator */}
+            <div className="mt-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-600 dark:text-gray-400">Volume:</span>
+                <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-gradient-to-r from-green-500 to-red-500 transition-all duration-100"
+                    style={{ width: `${voiceVolume}%` }}
+                  />
+                </div>
+                <span className="text-xs text-gray-600 dark:text-gray-400 w-8">{Math.round(voiceVolume)}%</span>
+              </div>
+              {voiceVolume < 10 && (
+                <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
+                  ⚠️ Low volume detected. Speak louder or closer to mic.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Question */}
         <h3 className="text-2xl font-bold text-gray-900 dark:text-white leading-relaxed">
@@ -1023,7 +1369,11 @@ export default function LessonView() {
               ref={contentRef}
               className="card min-h-[400px] p-8"
             >
-              {renderContent(currentBlock)}
+              {currentBlock ? renderContent(currentBlock) : (
+                <div className="flex items-center justify-center h-full text-gray-500">
+                  <p>No content available</p>
+                </div>
+              )}
             </motion.div>
 
             {/* Navigation */}

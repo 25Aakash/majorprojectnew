@@ -51,6 +51,9 @@ router.get('/insights', authMiddleware, async (req: AuthRequest, res: Response) 
     const userId = req.user?._id;
     const progress = await Progress.find({ userId });
 
+    // Calculate total learning time from all progress records
+    const totalLearningTime = progress.reduce((total, p) => total + (p.timeSpent || 0), 0);
+
     // Analyze learning patterns
     const allSessions = progress.flatMap((p) => p.learningSessions);
 
@@ -144,14 +147,24 @@ router.get('/insights', authMiddleware, async (req: AuthRequest, res: Response) 
     if (recommendedPace !== 'normal') {
       insightsArray.push({
         type: 'pace',
-        message: recommendedPace === 'slower' 
+        message: recommendedPace === 'slower'
           ? 'Consider reviewing material more thoroughly before moving on. Take your time!'
           : 'You\'re excelling! You might benefit from more challenging content.',
         icon: recommendedPace === 'slower' ? '🐢' : '🚀'
       });
     }
 
-    res.json(insightsArray);
+    // Return both formats for compatibility
+    res.json({
+      insights: {
+        optimalSessionDuration: optimalDuration,
+        bestTimeOfDay,
+        preferredContentType,
+        recommendedPace,
+        totalLearningTime
+      },
+      insightsArray
+    });
   } catch (error) {
     res.status(500).json({ message: 'Error calculating insights' });
   }
@@ -254,7 +267,7 @@ router.get('/focus-mode', authMiddleware, async (req: AuthRequest, res: Response
     // Calculate optimal break intervals
     const highFocusSessions = allSessions.filter((s) => s.focusScore > 75);
     let recommendedSessionDuration = focusSettings?.sessionDuration || 25;
-    
+
     if (highFocusSessions.length >= 5) {
       const avgDuration = highFocusSessions.reduce((acc, s) => {
         return acc + (new Date(s.endTime).getTime() - new Date(s.startTime).getTime()) / 60000;
@@ -270,8 +283,8 @@ router.get('/focus-mode', authMiddleware, async (req: AuthRequest, res: Response
         suggestion: recommendedSessionDuration < 20
           ? 'Consider shorter, more frequent sessions'
           : recommendedSessionDuration > 40
-          ? 'Your focus is great! Consider longer sessions'
-          : 'Your session duration is optimal',
+            ? 'Your focus is great! Consider longer sessions'
+            : 'Your session duration is optimal',
       },
     });
   } catch (error) {

@@ -254,7 +254,7 @@ export function useBiometricTracking(
 
       metrics.totalDistance += distance
       mouseSpeedsRef.current.push(speed)
-      
+
       if (mouseSpeedsRef.current.length > 100) {
         mouseSpeedsRef.current.shift()
       }
@@ -273,11 +273,11 @@ export function useBiometricTracking(
       if (lastDir) {
         const prevDx = lastDir.x - (pathStartRef.current?.x || lastDir.x)
         const prevDy = lastDir.y - (pathStartRef.current?.y || lastDir.y)
-        
+
         // Check for sharp direction change (more than 90 degrees)
         if ((prevDx * dx + prevDy * dy) < 0) {
           metrics.directionChanges++
-          
+
           // Very sharp change with high speed = erratic
           if (speed > 500 && Math.abs(prevDx * dx + prevDy * dy) > 100) {
             metrics.erraticMovementCount++
@@ -291,7 +291,7 @@ export function useBiometricTracking(
         const straightDx = e.clientX - pathStartRef.current.x
         const straightDy = e.clientY - pathStartRef.current.y
         straightLineDistanceRef.current = Math.sqrt(straightDx * straightDx + straightDy * straightDy)
-        
+
         if (pathDistanceRef.current > 0) {
           metrics.pathStraightness = straightLineDistanceRef.current / pathDistanceRef.current
         }
@@ -302,7 +302,7 @@ export function useBiometricTracking(
       // Detect back-and-forth movements
       if (mouseSpeedsRef.current.length >= 4) {
         const recent = mouseSpeedsRef.current.slice(-4)
-        const isBackForth = recent.every((s, i) => i === 0 || Math.abs(s - recent[i-1]) > 200)
+        const isBackForth = recent.every((s, i) => i === 0 || Math.abs(s - recent[i - 1]) > 200)
         if (isBackForth) {
           metrics.backAndForthMovements++
         }
@@ -329,7 +329,7 @@ export function useBiometricTracking(
     if (hoverStartRef.current) {
       const duration = Date.now() - hoverStartRef.current.startTime
       const metrics = mouseMetricsRef.current
-      
+
       metrics.hoverEvents.push({
         elementId: hoverStartRef.current.elementId,
         duration,
@@ -356,12 +356,12 @@ export function useBiometricTracking(
 
     // Check for miss-clicks (clicking on non-interactive elements)
     const target = e.target as HTMLElement
-    const isInteractive = target.tagName === 'BUTTON' || 
-                         target.tagName === 'A' ||
-                         target.tagName === 'INPUT' ||
-                         target.onclick !== null ||
-                         target.closest('button, a, [role="button"]')
-    
+    const isInteractive = target.tagName === 'BUTTON' ||
+      target.tagName === 'A' ||
+      target.tagName === 'INPUT' ||
+      target.onclick !== null ||
+      target.closest('button, a, [role="button"]')
+
     if (!isInteractive) {
       metrics.missClickCount++
     }
@@ -391,13 +391,13 @@ export function useBiometricTracking(
     const now = Date.now()
     const scrollY = window.scrollY
     const metrics = mouseMetricsRef.current.scrollPatterns
-    
+
     const scrollDelta = scrollY - lastScrollPosRef.current
     const timeDelta = now - lastScrollTimeRef.current
 
     if (timeDelta > 50) { // Debounce
       metrics.totalScrollDistance += Math.abs(scrollDelta)
-      
+
       if (scrollDelta > 0) {
         metrics.scrollDownCount++
       } else if (scrollDelta < 0) {
@@ -439,7 +439,7 @@ export function useBiometricTracking(
         recognitionRef.current = new SpeechRecognition()
         recognitionRef.current.continuous = true
         recognitionRef.current.interimResults = true
-        
+
         let speechStartTime = Date.now()
         let wordCount = 0
         let pauseCount = 0
@@ -559,7 +559,7 @@ export function useBiometricTracking(
 
         // Check if looking at content
         if (contentAreaRef.current) {
-          const isInContent = 
+          const isInContent =
             data.x >= contentAreaRef.current.left &&
             data.x <= contentAreaRef.current.right &&
             data.y >= contentAreaRef.current.top &&
@@ -569,7 +569,7 @@ export function useBiometricTracking(
             metrics.contentFocusPercentage = Math.min(100, metrics.contentFocusPercentage + 0.1)
           } else {
             metrics.contentFocusPercentage = Math.max(0, metrics.contentFocusPercentage - 0.1)
-            
+
             // Track distraction zone
             const zone = getDistractionZone(data.x, data.y)
             const existingZone = metrics.distractionZones.find(z => z.zone === zone)
@@ -597,7 +597,7 @@ export function useBiometricTracking(
             if (fixationStartRef.current) {
               const fixationDuration = now - fixationStartRef.current.time
               metrics.fixationCount++
-              metrics.averageFixationDuration = 
+              metrics.averageFixationDuration =
                 (metrics.averageFixationDuration * (metrics.fixationCount - 1) + fixationDuration) / metrics.fixationCount
 
               // Detect regression (looking back)
@@ -612,7 +612,7 @@ export function useBiometricTracking(
 
               fixationStartRef.current = null
             }
-            
+
             metrics.saccadeCount++
           }
         }
@@ -660,12 +660,11 @@ export function useBiometricTracking(
 
   const stopEyeTracking = useCallback(() => {
     try {
-      if (window.webgazer) {
+      if (window.webgazer && typeof window.webgazer.end === 'function') {
         window.webgazer.end()
       }
     } catch (error) {
-      // Ignore errors when stopping eye tracking - webgazer may not be fully initialized
-      console.debug('Eye tracking cleanup:', error)
+      // Silently ignore cleanup errors - WebGazer may not be fully initialized
     }
     setIsCalibrated(false)
   }, [])
@@ -733,18 +732,25 @@ export function useBiometricTracking(
         }
 
         // 2. Persist to MongoDB in background (Gap 3)
-        api.post('/biometric/persist', {
-          lessonId,
-          voiceMetrics: voiceData,
-          eyeMetrics: eyeData,
-          mouseMetrics: mouseData,
-          scores: response.data.combined_scores,
-        }).catch(() => {
-          // Non-critical — silent fail
-        })
+        // Only persist if we have a valid lessonId
+        if (lessonId) {
+          console.debug('Persisting biometric data with lessonId:', lessonId)
+          api.post('/biometric/persist', {
+            lessonId,
+            voiceMetrics: voiceData,
+            eyeMetrics: eyeData,
+            mouseMetrics: mouseData,
+            scores: response.data.combined_scores,
+          }).catch((error) => {
+            // Log errors for debugging but don't block main flow
+            console.debug('Biometric persist failed:', error.response?.data || error.message)
+          })
+        } else {
+          console.debug('Skipping biometric persist - no lessonId available')
+        }
       }
     } catch (error) {
-      console.error('Failed to send biometric update:', error)
+      console.debug('Biometric analysis failed:', error)
     }
   }, [lessonId, enabled, enableVoice, enableEyeTracking, enableMouseTracking])
 
