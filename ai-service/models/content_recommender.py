@@ -45,7 +45,11 @@ class ContentRecommender:
             try:
                 response = await client.get(f"{BACKEND_API_URL}/api/courses")
                 if response.status_code == 200:
-                    return response.json()
+                    data = response.json()
+                    # API returns { courses: [...] }, extract the array
+                    if isinstance(data, dict) and "courses" in data:
+                        return data["courses"]
+                    return data if isinstance(data, list) else []
                 return []
             except Exception as e:
                 print(f"Error fetching courses: {e}")

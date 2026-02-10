@@ -19,6 +19,14 @@ try:
 except ImportError:
     GTTS_AVAILABLE = False
 
+# Try to import video creation dependencies
+try:
+    from moviepy import ImageClip, AudioFileClip, concatenate_videoclips, CompositeVideoClip, TextClip
+    from PIL import Image, ImageDraw, ImageFont
+    MOVIEPY_AVAILABLE = True
+except ImportError:
+    MOVIEPY_AVAILABLE = False
+
 # API Keys from environment
 DID_API_KEY = os.getenv("DID_API_KEY", "")
 HEYGEN_API_KEY = os.getenv("HEYGEN_API_KEY", "")
@@ -40,20 +48,20 @@ class VideoGenerator:
     def __init__(self):
         os.makedirs(OUTPUT_DIR, exist_ok=True)
         
-        # Avatar options for D-ID
+        # Avatar options for D-ID (using real D-ID Clips presenter IDs)
         self.avatars = {
             "friendly_teacher": {
-                "presenter_id": "amy-jcwCkr1grs",  # D-ID presenter
+                "presenter_id": "v2_public_lana_black_suite_classroom@kOgpJoXaCn",  # Female teacher
                 "voice_id": "en-US-JennyNeural",
                 "style": "friendly"
             },
             "professional": {
-                "presenter_id": "matt-T9xoRqZdLY",
+                "presenter_id": "v2_public_joseph_grey_suite_coffeeshop@7fiPyaDUIq",  # Professional male
                 "voice_id": "en-US-GuyNeural", 
                 "style": "professional"
             },
             "young_tutor": {
-                "presenter_id": "lisa-M6oFptT7jD",
+                "presenter_id": "v2_public_lily@addf3c9auh",  # Young female tutor
                 "voice_id": "en-US-AriaNeural",
                 "style": "casual"
             }
@@ -325,34 +333,43 @@ class VideoGenerator:
         avatar: str = "friendly_teacher"
     ) -> Dict[str, Any]:
         """
-        Generate video using D-ID API
+        Generate video using D-ID API - creates AI talking avatar videos.
+        
+        To use this feature:
+        1. Sign up at https://www.d-id.com/
+        2. Get your API key from dashboard
+        3. Set DID_API_KEY environment variable (base64 encoded: base64(email:password))
         """
         if not DID_API_KEY:
             return {
                 "success": False,
-                "error": "D-ID API key not configured. Set DID_API_KEY environment variable.",
+                "error": "D-ID API key not configured. Set DID_API_KEY environment variable. Get your key at https://www.d-id.com/",
                 "fallback": "audio_slides"
             }
         
         avatar_config = self.avatars.get(avatar, self.avatars["friendly_teacher"])
         
         # Combine all narrations
-        full_script = script["intro"]["narration"] + " "
-        for segment in script["segments"]:
-            full_script += segment["narration"] + " "
-        full_script += script["outro"]["narration"]
+        full_script = script.get("intro", {}).get("narration", "") + " "
+        for segment in script.get("segments", []):
+            full_script += segment.get("narration", "") + " "
+        full_script += script.get("outro", {}).get("narration", "")
+        
+        # Limit script length for D-ID (they have limits)
+        if len(full_script) > 5000:
+            full_script = full_script[:5000] + "..."
         
         try:
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                # Create talk using D-ID API
+            async with httpx.AsyncClient(timeout=180.0) as client:
+                # Create clip using D-ID Clips API with presenter_id
                 response = await client.post(
-                    "https://api.d-id.com/talks",
+                    "https://api.d-id.com/clips",
                     headers={
                         "Authorization": f"Basic {DID_API_KEY}",
                         "Content-Type": "application/json"
                     },
                     json={
-                        "source_url": f"https://d-id-public-bucket.s3.us-west-2.amazonaws.com/alice.jpg",
+                        "presenter_id": avatar_config["presenter_id"],
                         "script": {
                             "type": "text",
                             "input": full_script,
@@ -362,7 +379,7 @@ class VideoGenerator:
                             }
                         },
                         "config": {
-                            "stitch": True
+                            "result_format": "mp4"
                         }
                     }
                 )
@@ -375,17 +392,30 @@ class VideoGenerator:
                     video_url = await self._poll_did_status(client, talk_id)
                     
                     if video_url:
+                        # Download the video locally
+                        local_path = await self._download_did_video(client, video_url, script.get("title", "avatar_video"))
+                        
                         return {
                             "success": True,
                             "video_url": video_url,
+                            "video_path": local_path,
                             "talk_id": talk_id,
-                            "script": script,
-                            "provider": "d-id"
+                            "title": script.get("title", ""),
+                            "duration_estimate": len(full_script) / 15,  # ~15 chars per second
+                            "provider": "d-id",
+                            "avatar": avatar
                         }
-                
+                else:
+                    error_detail = response.text
+                    try:
+                        error_json = response.json()
+                        error_detail = error_json.get("message", error_detail)
+                    except:
+                        pass
+                    
                 return {
                     "success": False,
-                    "error": f"D-ID API error: {response.text}",
+                    "error": f"D-ID API error ({response.status_code}): {error_detail}",
                     "fallback": "audio_slides"
                 }
                 
@@ -396,13 +426,31 @@ class VideoGenerator:
                 "fallback": "audio_slides"
             }
 
-    async def _poll_did_status(self, client: httpx.AsyncClient, talk_id: str, max_attempts: int = 30) -> Optional[str]:
-        """Poll D-ID API for video completion"""
+    async def _download_did_video(self, client: httpx.AsyncClient, video_url: str, title: str) -> str:
+        """Download D-ID video to local storage"""
+        try:
+            response = await client.get(video_url)
+            if response.status_code == 200:
+                safe_title = "".join(c if c.isalnum() else "_" for c in title)[:50]
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"avatar_{safe_title}_{timestamp}.mp4"
+                filepath = os.path.join(OUTPUT_DIR, filename)
+                
+                with open(filepath, "wb") as f:
+                    f.write(response.content)
+                
+                return filepath
+        except Exception as e:
+            print(f"Failed to download D-ID video: {e}")
+        return ""
+
+    async def _poll_did_status(self, client: httpx.AsyncClient, clip_id: str, max_attempts: int = 30) -> Optional[str]:
+        """Poll D-ID Clips API for video completion"""
         for _ in range(max_attempts):
             await asyncio.sleep(2)
             
             response = await client.get(
-                f"https://api.d-id.com/talks/{talk_id}",
+                f"https://api.d-id.com/clips/{clip_id}",
                 headers={"Authorization": f"Basic {DID_API_KEY}"}
             )
             
@@ -608,6 +656,269 @@ class VideoGenerator:
         
         # Fallback to slide presentation with audio
         return await self.generate_video_with_slides(script, include_audio=True)
+
+    def _create_slide_image(
+        self,
+        slide: Dict[str, Any],
+        width: int = 1920,
+        height: int = 1080
+    ) -> str:
+        """
+        Create a slide image using Pillow
+        """
+        if not MOVIEPY_AVAILABLE:
+            return ""
+        
+        # Color schemes based on slide type
+        color_schemes = {
+            "intro": {"bg": (59, 130, 246), "text": (255, 255, 255), "accent": (147, 197, 253)},
+            "content": {"bg": (249, 250, 251), "text": (17, 24, 39), "accent": (59, 130, 246)},
+            "outro": {"bg": (34, 197, 94), "text": (255, 255, 255), "accent": (187, 247, 208)},
+        }
+        
+        slide_type = slide.get("type", "content")
+        colors = color_schemes.get(slide_type, color_schemes["content"])
+        
+        # Create image
+        img = Image.new('RGB', (width, height), colors["bg"])
+        draw = ImageDraw.Draw(img)
+        
+        # Try to load a font, fallback to default
+        try:
+            title_font = ImageFont.truetype("arial.ttf", 72)
+            body_font = ImageFont.truetype("arial.ttf", 42)
+            small_font = ImageFont.truetype("arial.ttf", 32)
+        except:
+            title_font = ImageFont.load_default()
+            body_font = ImageFont.load_default()
+            small_font = ImageFont.load_default()
+        
+        # Draw title
+        title = slide.get("title", "")
+        if title:
+            # Center the title
+            bbox = draw.textbbox((0, 0), title, font=title_font)
+            text_width = bbox[2] - bbox[0]
+            x = (width - text_width) // 2
+            y = 100 if slide_type == "intro" else 80
+            draw.text((x, y), title, fill=colors["text"], font=title_font)
+        
+        # Draw subtitle for intro
+        if slide_type == "intro" and slide.get("subtitle"):
+            subtitle = slide["subtitle"]
+            bbox = draw.textbbox((0, 0), subtitle, font=body_font)
+            text_width = bbox[2] - bbox[0]
+            x = (width - text_width) // 2
+            draw.text((x, 200), subtitle, fill=colors["accent"], font=body_font)
+        
+        # Draw key points
+        key_points = slide.get("key_points", [])
+        if key_points:
+            y_start = 280
+            for i, point in enumerate(key_points[:5]):
+                bullet = f"• {point}"
+                draw.text((150, y_start + i * 80), bullet, fill=colors["text"], font=body_font)
+        
+        # Draw visual description box
+        visual_desc = slide.get("visual_description", "")
+        if visual_desc and slide_type == "content":
+            # Draw a placeholder box for visual content
+            box_x, box_y = width - 700, 250
+            box_w, box_h = 550, 400
+            draw.rectangle([box_x, box_y, box_x + box_w, box_y + box_h], 
+                          outline=colors["accent"], width=3)
+            # Wrap and draw the description
+            words = visual_desc.split()
+            lines = []
+            current_line = ""
+            for word in words:
+                test_line = current_line + " " + word if current_line else word
+                bbox = draw.textbbox((0, 0), test_line, font=small_font)
+                if bbox[2] - bbox[0] < box_w - 40:
+                    current_line = test_line
+                else:
+                    if current_line:
+                        lines.append(current_line)
+                    current_line = word
+            if current_line:
+                lines.append(current_line)
+            
+            for i, line in enumerate(lines[:6]):
+                draw.text((box_x + 20, box_y + 30 + i * 50), line, 
+                         fill=colors["text"], font=small_font)
+        
+        # Draw progress indicator for ADHD adaptation
+        progress = slide.get("progress", "")
+        if progress:
+            draw.text((width - 200, height - 80), progress, 
+                     fill=colors["accent"], font=body_font)
+        
+        # Draw encouragement
+        encouragement = slide.get("encouragement", "")
+        if encouragement:
+            bbox = draw.textbbox((0, 0), encouragement, font=small_font)
+            text_width = bbox[2] - bbox[0]
+            x = (width - text_width) // 2
+            draw.text((x, height - 150), encouragement, 
+                     fill=colors["accent"], font=small_font)
+        
+        # Save the image
+        img_path = os.path.join(OUTPUT_DIR, f"slide_{slide.get('id', 0)}.png")
+        img.save(img_path)
+        return img_path
+
+    async def create_full_video(
+        self,
+        topic: str,
+        subject: str,
+        conditions: List[str] = [],
+        learning_styles: List[str] = [],
+        duration_minutes: int = 5,
+        difficulty: str = "beginner",
+        output_filename: str = None
+    ) -> Dict[str, Any]:
+        """
+        Create a complete MP4 video file with slides and audio narration.
+        Combines generated slide images with TTS audio into a single video.
+        """
+        if not MOVIEPY_AVAILABLE:
+            return {
+                "success": False,
+                "error": "moviepy and pillow are required. Install with: pip install moviepy pillow"
+            }
+        
+        # First generate the slide presentation with audio
+        result = await self.generate_educational_video(
+            topic=topic,
+            subject=subject,
+            conditions=conditions,
+            learning_styles=learning_styles,
+            duration_minutes=duration_minutes,
+            difficulty=difficulty,
+            prefer_avatar=False  # Use slides for this
+        )
+        
+        if not result.get("success"):
+            return result
+        
+        slides = result.get("slides", [])
+        if not slides:
+            return {"success": False, "error": "No slides generated"}
+        
+        # Generate output filename
+        if not output_filename:
+            safe_topic = "".join(c if c.isalnum() else "_" for c in topic)[:50]
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_filename = f"{safe_topic}_{timestamp}.mp4"
+        
+        output_path = os.path.join(OUTPUT_DIR, output_filename)
+        
+        # Run video creation in thread to avoid blocking
+        loop = asyncio.get_event_loop()
+        try:
+            video_result = await loop.run_in_executor(
+                None,
+                self._create_video_sync,
+                slides,
+                output_path
+            )
+            
+            if video_result.get("success"):
+                video_result["total_slides"] = len(slides)
+                video_result["adaptations"] = result.get("adaptations", [])
+                video_result["video_filename"] = output_filename
+            
+            return video_result
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Failed to create video: {str(e)}"
+            }
+
+    def _create_video_sync(
+        self,
+        slides: List[Dict[str, Any]],
+        output_path: str
+    ) -> Dict[str, Any]:
+        """
+        Synchronous video creation using moviepy.
+        Called from thread executor to avoid blocking async loop.
+        """
+        video_clips = []
+        
+        try:
+            for slide in slides:
+                # Create slide image
+                img_path = self._create_slide_image(slide)
+                if not img_path or not os.path.exists(img_path):
+                    print(f"Skipping slide {slide.get('id')}: no image")
+                    continue
+                
+                # Get audio file and duration
+                audio_path = slide.get("audio_file", "")
+                duration = slide.get("duration", 10)
+                
+                # Create image clip
+                img_clip = ImageClip(img_path)
+                
+                # If audio exists, use its duration
+                if audio_path and os.path.exists(audio_path):
+                    try:
+                        audio_clip = AudioFileClip(audio_path)
+                        duration = audio_clip.duration + 0.5  # Add buffer
+                        img_clip = img_clip.with_duration(duration)
+                        img_clip = img_clip.with_audio(audio_clip)
+                    except Exception as e:
+                        print(f"Error adding audio for slide {slide.get('id')}: {e}")
+                        img_clip = img_clip.with_duration(duration)
+                else:
+                    img_clip = img_clip.with_duration(duration)
+                
+                video_clips.append(img_clip)
+            
+            if not video_clips:
+                return {"success": False, "error": "No video clips created"}
+            
+            # Concatenate all clips
+            print(f"Concatenating {len(video_clips)} clips...")
+            final_video = concatenate_videoclips(video_clips, method="compose")
+            
+            # Write the video file
+            print(f"Writing video to {output_path}...")
+            final_video.write_videofile(
+                output_path,
+                fps=24,
+                codec="libx264",
+                audio_codec="aac"
+            )
+            
+            total_duration = sum(c.duration for c in video_clips)
+            
+            # Close clips to free resources
+            final_video.close()
+            for clip in video_clips:
+                clip.close()
+            
+            file_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
+            
+            return {
+                "success": True,
+                "video_path": output_path,
+                "total_duration": round(total_duration, 1),
+                "file_size_mb": round(file_size / (1024 * 1024), 2),
+                "message": f"Video created successfully!"
+            }
+        except Exception as e:
+            # Clean up on error
+            for clip in video_clips:
+                try:
+                    clip.close()
+                except:
+                    pass
+            return {
+                "success": False,
+                "error": f"Video creation failed: {str(e)}"
+            }
 
 
 # Singleton instance

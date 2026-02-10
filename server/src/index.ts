@@ -41,8 +41,8 @@ app.use('/api/config', configRoutes);
 // AI Service proxy routes
 app.post('/api/ai/*', async (req, res) => {
   try {
-    // Remove '/api/ai' prefix and forward to AI service's /api path
-    const aiPath = req.path.replace('/api/ai', '');
+    // Forward to AI service keeping the /api/ai path
+    const aiPath = req.path.replace('/api', '');
     const response = await axios.post(`${AI_SERVICE_URL}/api${aiPath}`, req.body);
     res.json(response.data);
   } catch (error: unknown) {
@@ -57,8 +57,8 @@ app.post('/api/ai/*', async (req, res) => {
 
 app.get('/api/ai/*', async (req, res) => {
   try {
-    // Remove '/api/ai' prefix and forward to AI service's /api path
-    const aiPath = req.path.replace('/api/ai', '');
+    // Forward to AI service keeping the /api/ai path
+    const aiPath = req.path.replace('/api', '');
     const response = await axios.get(`${AI_SERVICE_URL}/api${aiPath}`, { params: req.query });
     res.json(response.data);
   } catch (error: unknown) {
