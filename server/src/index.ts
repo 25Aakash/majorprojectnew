@@ -18,6 +18,7 @@ import biometricRoutes from './routes/biometric.routes';
 import spacedRepetitionRoutes from './routes/spaced-repetition.routes';
 import exportRoutes from './routes/export.routes';
 import experimentRoutes from './routes/experiment.routes';
+import aiRoutes from './routes/ai.routes';
 import { apiLimiter, authLimiter, aiLimiter } from './middleware/rateLimit.middleware';
 
 dotenv.config();
@@ -47,8 +48,9 @@ app.use('/api/config', configRoutes);
 app.use('/api/spaced-repetition', spacedRepetitionRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/experiments', experimentRoutes);
+app.use('/api/ai', aiRoutes); // AI service proxy with request transformation
 
-// AI Service proxy routes (with stricter rate limit for LLM calls)
+// AI Service fallback proxy routes for other AI endpoints
 app.post('/api/ai/*', aiLimiter, async (req, res) => {
   try {
     // Forward to AI service keeping the /api/ai path
