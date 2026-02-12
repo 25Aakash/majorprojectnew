@@ -164,18 +164,33 @@ router.post(
         return res.status(401).json({ message: 'Invalid credentials' });
       }
 
-      // Update streak
+      // Update streak — compare calendar dates, not raw timestamps
       const today = new Date();
+      const todayStr = today.toDateString();
       const lastActive = user.rewards.lastActiveDate;
-      const daysDiff = Math.floor((today.getTime() - lastActive.getTime()) / (1000 * 60 * 60 * 24));
+      const lastActiveStr = lastActive ? lastActive.toDateString() : '';
 
-      if (daysDiff === 1) {
-        user.rewards.streakDays += 1;
-      } else if (daysDiff > 1) {
-        user.rewards.streakDays = 1;
+      if (lastActiveStr !== todayStr) {
+        // Different calendar day — check if it's consecutive
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+
+        if (lastActiveStr === yesterday.toDateString()) {
+          // Consecutive day → increment streak
+          user.rewards.streakDays += 1;
+        } else if (!lastActive || lastActiveStr !== todayStr) {
+          // Missed a day (or first login) → reset to 1
+          user.rewards.streakDays = 1;
+        }
+
+        user.rewards.lastActiveDate = today;
+        await user.save();
       }
-      user.rewards.lastActiveDate = today;
-      await user.save();
+      // Same calendar day — no streak change needed, but save lastActiveDate
+      if (lastActiveStr === todayStr && !lastActive) {
+        user.rewards.lastActiveDate = today;
+        await user.save();
+      }
 
       const token = generateToken(user._id.toString());
 

@@ -7,7 +7,6 @@ export interface SSEIntervention {
   suggestedAction?: string
 }
 
-/* Disabled until SSE endpoint is implemented
 interface SSEEvent {
   type: string
   data?: {
@@ -16,7 +15,6 @@ interface SSEEvent {
     timestamp?: string
   }
 }
-*/
 
 interface UseSSEInterventionsOptions {
   userId: string | undefined
@@ -26,7 +24,7 @@ interface UseSSEInterventionsOptions {
 
 /**
  * Hook that connects to the AI service's Server-Sent Events stream
- * to receive real-time push interventions (Gap 6).
+ * to receive real-time push interventions.
  */
 export function useSSEInterventions({ userId, enabled, onIntervention }: UseSSEInterventionsOptions) {
   const [connected, setConnected] = useState(false)
@@ -35,10 +33,6 @@ export function useSSEInterventions({ userId, enabled, onIntervention }: UseSSEI
   onInterventionRef.current = onIntervention
 
   const connect = useCallback(() => {
-    // SSE endpoint not implemented yet - disable to prevent 404 errors
-    return
-
-    /* Disabled until backend implements /api/ai/events endpoint
     if (!userId || !enabled) return
 
     // Close existing connection
@@ -79,7 +73,6 @@ export function useSSEInterventions({ userId, enabled, onIntervention }: UseSSEI
         if (enabled) connect()
       }, 5000)
     }
-    */
   }, [userId, enabled])
 
   useEffect(() => {

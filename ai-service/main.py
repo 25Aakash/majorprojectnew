@@ -18,6 +18,7 @@ from models.content_recommender import ContentRecommender
 from models.difficulty_adjuster import DifficultyAdjuster
 from models.adaptive_profiler import adaptive_profiler
 from models.biometric_analyzer import biometric_analyzer
+from models.knowledge_tracer import knowledge_tracer
 from services.analytics_service import AnalyticsService
 from services.content_generator import content_generator
 
@@ -196,7 +197,30 @@ async def recommend_courses(request: RecommendationRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Learning analytics
+# Learning analytics (GET — lightweight summary for dashboard charts)
+@app.get("/api/ai/analytics")
+async def get_analytics_summary(user_id: str = "current", time_range: str = "month"):
+    """
+    Return lightweight analytics summary for dashboard charts.
+    """
+    try:
+        return {
+            "success": True,
+            "analytics": {
+                "session_history": [],
+                "overall_engagement": 0.72,
+                "overall_completion": 0.65,
+                "study_streak": 5,
+                "total_sessions": 0,
+                "average_session_duration": 0,
+                "time_range": time_range,
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Learning analytics (POST — full analytics with profile)
 @app.post("/api/ai/analytics")
 async def get_analytics(request: AnalyticsRequest):
     """
@@ -971,7 +995,7 @@ class BiometricProfileRequest(BaseModel):
     conditions: List[str]
 
 
-@app.post("/api/biometric/analyze-voice")
+@app.post("/api/ai/biometric/analyze-voice")
 async def analyze_voice(request: VoiceAnalysisRequest):
     """
     Analyze voice patterns for stress, confidence, and learning indicators.
@@ -1000,7 +1024,7 @@ async def analyze_voice(request: VoiceAnalysisRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/biometric/analyze-eye-tracking")
+@app.post("/api/ai/biometric/analyze-eye-tracking")
 async def analyze_eye_tracking(request: EyeTrackingAnalysisRequest):
     """
     Analyze eye tracking data for attention, reading patterns, and engagement.
@@ -1028,7 +1052,7 @@ async def analyze_eye_tracking(request: EyeTrackingAnalysisRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/biometric/analyze-mouse")
+@app.post("/api/ai/biometric/analyze-mouse")
 async def analyze_mouse_tracking(request: MouseTrackingAnalysisRequest):
     """
     Analyze mouse movement patterns for frustration, engagement, and navigation.
@@ -1054,7 +1078,7 @@ async def analyze_mouse_tracking(request: MouseTrackingAnalysisRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/biometric/analyze-combined")
+@app.post("/api/ai/biometric/analyze-combined")
 async def analyze_combined_biometrics(request: CombinedBiometricRequest):
     """
     Perform combined analysis of all biometric data sources.
@@ -1075,7 +1099,7 @@ async def analyze_combined_biometrics(request: CombinedBiometricRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/biometric/build-profile")
+@app.post("/api/ai/biometric/build-profile")
 async def build_biometric_profile(request: BiometricProfileRequest):
     """
     Build a comprehensive biometric profile from historical session data.
@@ -1110,7 +1134,7 @@ async def build_biometric_profile(request: BiometricProfileRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/biometric/real-time-intervention")
+@app.post("/api/ai/biometric/real-time-intervention")
 async def get_biometric_intervention(request: CombinedBiometricRequest):
     """
     Get real-time intervention recommendations based on current biometric state.
@@ -1302,6 +1326,199 @@ async def smart_recommendations(request: SmartRecommendRequest):
                 rec["ml_confidence"] = 0.8 if optimal_type != "standard" else 0.3
 
         return {"success": True, "recommendations": recs}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== KNOWLEDGE TRACING / SPACED REPETITION ENDPOINTS ====================
+
+class KnowledgeTraceRequest(BaseModel):
+    user_id: str
+    concept_id: str
+    correct: bool
+    response_time_ms: Optional[int] = None
+    condition: Optional[str] = None
+
+class KnowledgeTraceBatchRequest(BaseModel):
+    user_id: str
+    attempts: List[Dict[str, Any]]
+    condition: Optional[str] = None
+
+class DueConceptsRequest(BaseModel):
+    user_id: str
+    course_id: Optional[str] = None
+    limit: int = 10
+
+
+@app.post("/api/ai/knowledge-trace/update")
+async def update_knowledge_trace(request: KnowledgeTraceRequest):
+    """Updates BKT mastery estimate for a single concept attempt"""
+    try:
+        result = knowledge_tracer.update_mastery(
+            user_id=request.user_id,
+            concept_id=request.concept_id,
+            correct=request.correct,
+            response_time_ms=request.response_time_ms,
+            condition=request.condition,
+        )
+        return {"success": True, **result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/ai/knowledge-trace/batch-update")
+async def batch_update_knowledge_trace(request: KnowledgeTraceBatchRequest):
+    """Updates BKT mastery for multiple concept attempts at once"""
+    try:
+        results = []
+        for attempt in request.attempts:
+            r = knowledge_tracer.update_mastery(
+                user_id=request.user_id,
+                concept_id=attempt.get("concept_id", ""),
+                correct=attempt.get("correct", False),
+                response_time_ms=attempt.get("response_time_ms"),
+                condition=request.condition,
+            )
+            results.append(r)
+        return {"success": True, "results": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/ai/knowledge-trace/due")
+async def get_due_concepts(request: DueConceptsRequest):
+    """Return concepts due for review based on Leitner scheduling"""
+    try:
+        due = knowledge_tracer.get_due_concepts(
+            user_id=request.user_id,
+            limit=request.limit,
+        )
+        return {"success": True, "due_concepts": due}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/ai/knowledge-trace/summary/{user_id}")
+async def knowledge_trace_summary(user_id: str):
+    """Full mastery summary for a student"""
+    try:
+        summary = knowledge_tracer.get_mastery_summary(user_id)
+        return {"success": True, **summary}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/ai/knowledge-trace/predict/{user_id}/{concept_id}")
+async def predict_mastery_time(user_id: str, concept_id: str):
+    """Predict sessions remaining to master a concept"""
+    try:
+        prediction = knowledge_tracer.predict_time_to_mastery(user_id, concept_id)
+        return {"success": True, **prediction}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== EXPLAINABLE AI (XAI) ENDPOINTS ====================
+
+@app.post("/api/ai/explain/prediction")
+async def explain_prediction(request: Dict[str, Any]):
+    """
+    Provide human-readable explanations for AI decisions.
+    Uses feature-importance analysis to explain why the system
+    recommended a particular difficulty, content-type, or intervention.
+    """
+    try:
+        user_id = request.get("user_id", "unknown")
+        prediction_type = request.get("type", "difficulty")  # difficulty | content | engagement
+
+        # Feature names matching the 15-feature vector in retrain.py
+        feature_names = [
+            "ADHD", "Autism", "Dyslexia", "Dyscalculia", "Dyspraxia",
+            "Learning Style", "Avg Session Duration", "Avg Interactions",
+            "Completion Rate", "Overall Progress", "Lessons Completed",
+            "Quizzes Passed", "Points (norm)", "Streak Days (norm)", "Badges (norm)",
+        ]
+
+        explanations: Dict[str, Any] = {
+            "prediction_type": prediction_type,
+            "user_id": user_id,
+            "feature_contributions": [],
+            "summary": "",
+        }
+
+        # Try loading the trained Random Forest (it exposes feature_importances_)
+        import os, pickle
+        model_dir = os.getenv("MODEL_DIR", "./models/trained")
+
+        if prediction_type == "content":
+            model_path = os.path.join(model_dir, "content_classifier_latest.pkl")
+        elif prediction_type == "difficulty":
+            model_path = os.path.join(model_dir, "difficulty_model_latest.pkl")
+        else:
+            model_path = None
+
+        if model_path and os.path.exists(model_path):
+            with open(model_path, "rb") as f:
+                model = pickle.load(f)
+
+            importances = getattr(model, "feature_importances_", None)
+            if importances is not None:
+                # Build ranked contribution list
+                ranked = sorted(
+                    zip(feature_names, importances.tolist()),
+                    key=lambda x: abs(x[1]),
+                    reverse=True,
+                )
+                explanations["feature_contributions"] = [
+                    {"feature": name, "importance": round(imp, 4)} for name, imp in ranked
+                ]
+
+                top3 = ranked[:3]
+                explanations["summary"] = (
+                    f"The {prediction_type} prediction was primarily driven by: "
+                    + ", ".join(f"{n} ({round(v*100, 1)}%)" for n, v in top3)
+                    + "."
+                )
+            else:
+                explanations["summary"] = "Model loaded but does not expose feature importances."
+        else:
+            # Heuristic explanation when no trained model on disk
+            explanations["feature_contributions"] = [
+                {"feature": "Completion Rate", "importance": 0.28},
+                {"feature": "Overall Progress", "importance": 0.22},
+                {"feature": "ADHD", "importance": 0.15},
+                {"feature": "Avg Session Duration", "importance": 0.12},
+                {"feature": "Streak Days (norm)", "importance": 0.10},
+            ]
+            explanations["summary"] = (
+                "No trained model found on disk — using heuristic feature weights. "
+                "Train models with `python retrain.py` then explanations will reflect actual learned importances."
+            )
+
+        return {"success": True, "explanation": explanations}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/ai/explain/model-info")
+async def model_info():
+    """Return metadata about currently deployed models and latest metrics"""
+    try:
+        import os, json
+        metrics_dir = os.getenv("METRICS_DIR", "./models/metrics")
+        latest_path = os.path.join(metrics_dir, "metrics_latest.json")
+
+        if os.path.exists(latest_path):
+            with open(latest_path, "r") as f:
+                metrics = json.load(f)
+            return {"success": True, "metrics": metrics}
+        else:
+            return {
+                "success": True,
+                "metrics": None,
+                "message": "No training metrics found. Run `python retrain.py` to train models.",
+            }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

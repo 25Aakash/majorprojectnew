@@ -28,6 +28,7 @@ import LessonManager from './pages/educator/LessonManager'
 import LessonEditor from './pages/educator/LessonEditor'
 import AIContentGenerator from './pages/educator/AIContentGenerator'
 import AIVideoGenerator from './pages/educator/AIVideoGenerator'
+import Assessment from './pages/Assessment'
 
 // Components
 import ProtectedRoute from './components/ProtectedRoute'
@@ -86,6 +87,7 @@ function App() {
             <Route path="/settings/accessibility" element={<AccessibilitySettings />} />
             <Route path="/focus-mode" element={<FocusMode />} />
             <Route path="/parent-dashboard" element={<ParentDashboard />} />
+            <Route path="/assessment" element={<Assessment />} />
             
             {/* Educator Routes */}
             <Route path="/educator" element={<EducatorDashboard />} />

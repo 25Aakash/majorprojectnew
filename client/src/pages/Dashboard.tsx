@@ -5,6 +5,7 @@ import { useAuthStore } from '../stores/authStore'
 import api from '../services/api'
 import AIRecommendations from '../components/AIRecommendations'
 import AdaptiveInsights from '../components/dashboard/AdaptiveInsights'
+import PerformanceCharts from '../components/dashboard/PerformanceCharts'
 import OnboardingProgress from '../components/OnboardingProgress'
 import {
   AcademicCapIcon,
@@ -427,6 +428,16 @@ export default function Dashboard() {
         className="mt-8"
       >
         <AdaptiveInsights />
+      </motion.div>
+
+      {/* Interactive Performance Charts (Recharts) */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.6 }}
+        className="mt-8"
+      >
+        <PerformanceCharts />
       </motion.div>
     </div>
   )

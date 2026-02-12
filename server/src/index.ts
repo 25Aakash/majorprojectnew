@@ -15,6 +15,10 @@ import adaptiveRoutes from './routes/adaptive.routes';
 import configRoutes from './routes/config.routes';
 import adaptiveLearningRoutes from './routes/adaptive-learning.routes';
 import biometricRoutes from './routes/biometric.routes';
+import spacedRepetitionRoutes from './routes/spaced-repetition.routes';
+import exportRoutes from './routes/export.routes';
+import experimentRoutes from './routes/experiment.routes';
+import { apiLimiter, authLimiter, aiLimiter } from './middleware/rateLimit.middleware';
 
 dotenv.config();
 
@@ -27,8 +31,11 @@ app.use(cors());
 app.use(express.json());
 app.use(morgan('dev'));
 
+// Global rate limiting — 100 req/min per IP
+app.use('/api', apiLimiter);
+
 // Routes
-app.use('/api/auth', authRoutes);
+app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/user', userRoutes); // Also mount at singular for frontend compatibility
 app.use('/api/courses', courseRoutes);
@@ -37,9 +44,12 @@ app.use('/api/adaptive', adaptiveRoutes);
 app.use('/api/adaptive-learning', adaptiveLearningRoutes);
 app.use('/api/biometric', biometricRoutes);
 app.use('/api/config', configRoutes);
+app.use('/api/spaced-repetition', spacedRepetitionRoutes);
+app.use('/api/export', exportRoutes);
+app.use('/api/experiments', experimentRoutes);
 
-// AI Service proxy routes
-app.post('/api/ai/*', async (req, res) => {
+// AI Service proxy routes (with stricter rate limit for LLM calls)
+app.post('/api/ai/*', aiLimiter, async (req, res) => {
   try {
     // Forward to AI service keeping the /api/ai path
     const aiPath = req.path.replace('/api', '');

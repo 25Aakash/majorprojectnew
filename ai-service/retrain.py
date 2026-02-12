@@ -455,9 +455,21 @@ class ModelTrainer:
         print(f"Fetched data for {len(raw_data)} students")
         
         if len(raw_data) < 5:
-            print("Warning: Insufficient data for proper training. Using synthetic augmentation...")
-            # Generate synthetic data if not enough real data
-            raw_data = self._augment_data(raw_data)
+            print("⚠  WARNING: Insufficient real data for proper training (found < 5 students).")
+            print("   The models WILL NOT be trained with synthetic/fake data.")
+            print("")
+            print("   WHERE TO GET REAL DATA:")
+            print("   1. Use the platform — every student session writes to MongoDB automatically.")
+            print("      Enrol at least 15-20 students and let them complete a few lessons each.")
+            print("   2. Seed your DB with a public learning-analytics dataset:")
+            print("      • ASSISTments 2009-2015: https://sites.google.com/site/assistmentsdata/datasets")
+            print("      • EdNet (AI2/Riiid):     https://github.com/riiid/ednet")
+            print("      • Junyi Academy (BKT):    https://pslcdatashop.web.cmu.edu/DatasetInfo?datasetId=1198")
+            print("      • KDD Cup 2010:           https://pslcdatashop.web.cmu.edu/KDDCup/")
+            print("")
+            print("   After seeding, re-run: python retrain.py")
+            return {"status": "insufficient_data", "students_found": len(raw_data),
+                    "message": "Need at least 5 students with session data. See console for data sources."}
         
         # Step 2: Preprocess
         print("\n[2/6] Preprocessing data...")
@@ -513,46 +525,8 @@ class ModelTrainer:
         
         return metrics
 
-    def _augment_data(self, raw_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """
-        Augment data with synthetic samples if not enough real data
-        """
-        augmented = list(raw_data)
-        
-        conditions_list = ['adhd', 'autism', 'dyslexia', 'dyscalculia', 'dyspraxia']
-        styles = ['visual', 'auditory', 'kinesthetic', 'reading']
-        
-        # Generate at least 50 samples
-        while len(augmented) < 50:
-            synthetic = {
-                'student_id': f'synthetic_{len(augmented)}',
-                'conditions': [np.random.choice(conditions_list)] if np.random.random() > 0.3 else [],
-                'learning_style': np.random.choice(styles),
-                'sensory_preferences': {},
-                'focus_settings': {'sessionDuration': np.random.randint(15, 45)},
-                'progress': {
-                    'overallProgress': np.random.randint(0, 100),
-                    'lessonsCompleted': np.random.randint(0, 50),
-                    'quizzesPassed': np.random.randint(0, 20)
-                },
-                'sessions': [
-                    {
-                        'duration': np.random.randint(300, 3600),
-                        'interactions': np.random.randint(10, 100),
-                        'completion_rate': np.random.random()
-                    }
-                    for _ in range(np.random.randint(1, 10))
-                ],
-                'rewards': {
-                    'points': np.random.randint(0, 1000),
-                    'streakDays': np.random.randint(0, 30),
-                    'badges': ['badge-' + str(i) for i in range(np.random.randint(0, 10))]
-                }
-            }
-            augmented.append(synthetic)
-        
-        print(f"Augmented data from {len(raw_data)} to {len(augmented)} samples")
-        return augmented
+    # _augment_data removed — the project does NOT use synthetic data.
+    # For real training data, see evaluate_models.py header for public dataset links.
 
 
 def retrain_model():

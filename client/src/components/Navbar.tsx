@@ -70,6 +70,12 @@ export default function Navbar() {
                 >
                   Focus Mode
                 </Link>
+                <Link
+                  to="/assessment"
+                  className="text-gray-600 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400 px-3 py-2 rounded-lg transition-colors"
+                >
+                  Assessment
+                </Link>
               </>
             )}
 

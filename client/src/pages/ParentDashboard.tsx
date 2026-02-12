@@ -8,6 +8,7 @@ import {
   ClockIcon,
   AcademicCapIcon,
   FireIcon,
+  ArrowDownTrayIcon,
 } from '@heroicons/react/24/outline'
 
 interface StudentProgress {
@@ -133,6 +134,20 @@ export default function ParentDashboard() {
         <p className="text-gray-600 dark:text-gray-400 mb-8">
           Monitor and support student learning progress
         </p>
+
+        {/* Export button */}
+        {selectedStudent && (
+          <div className="mb-6 flex gap-3">
+            <a
+              href={`/api/export/student/${selectedStudent}/csv`}
+              download
+              className="inline-flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors text-sm font-medium"
+            >
+              <ArrowDownTrayIcon className="h-4 w-4" />
+              Download Progress Report (CSV)
+            </a>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           {/* Sidebar - Student List */}

@@ -1,18 +1,16 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, AuthRequest, roleMiddleware } from '../middleware/auth.middleware';
+import Config from '../models/Config.model';
 
 const router = Router();
 
 /**
  * Dynamic Configuration API
- * Serves configurable options that can be extended/modified without code changes
- * These could be moved to database for full admin control
+ * Config is served from MongoDB when available, falling back to defaults.
+ * Admins can PUT to persist changes that survive restarts.
  */
 
-// In production, these would come from a Config collection in MongoDB
-// For now, they're centralized here for easy modification
-
-const getConfig = () => ({
+const getDefaults = () => ({
   // Neurodiverse conditions supported by the platform
   conditions: [
     { id: 'adhd', label: 'ADHD', emoji: '⚡', description: 'Attention Deficit Hyperactivity Disorder' },
@@ -162,10 +160,31 @@ const getConfig = () => ({
   ],
 });
 
+/**
+ * Helper: merge defaults with whatever is persisted in MongoDB.
+ * DB values override defaults so admins can update individual sections.
+ */
+async function getConfig() {
+  const defaults = getDefaults();
+  try {
+    const docs = await Config.find({});
+    const merged: Record<string, unknown> = { ...defaults };
+    for (const doc of docs) {
+      if (doc.section in defaults) {
+        (merged as any)[doc.section] = doc.data;
+      }
+    }
+    return merged;
+  } catch {
+    // If DB is unavailable, still serve hardcoded defaults
+    return defaults;
+  }
+}
+
 // Get all configuration
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const config = getConfig();
+    const config = await getConfig();
     res.json(config);
   } catch (error) {
     console.error('Error fetching config:', error);
@@ -176,32 +195,47 @@ router.get('/', async (req: Request, res: Response) => {
 // Get specific config section
 router.get('/:section', async (req: Request, res: Response) => {
   try {
-    const config = getConfig();
-    const section = req.params.section as keyof ReturnType<typeof getConfig>;
-    
-    if (section in config) {
-      res.json(config[section]);
-    } else {
-      res.status(404).json({ message: 'Configuration section not found' });
+    const section = req.params.section;
+    // Try database first
+    const doc = await Config.findOne({ section });
+    if (doc) {
+      return res.json(doc.data);
     }
+    // Fall back to defaults
+    const defaults = getDefaults();
+    if (section in defaults) {
+      return res.json((defaults as any)[section]);
+    }
+    res.status(404).json({ message: 'Configuration section not found' });
   } catch (error) {
     console.error('Error fetching config section:', error);
     res.status(500).json({ message: 'Error fetching configuration section' });
   }
 });
 
-// Admin: Update configuration (would save to database in production)
+// Admin: Update configuration — persists to MongoDB
 router.put(
   '/:section',
   authMiddleware,
   roleMiddleware('admin'),
   async (req: AuthRequest, res: Response) => {
     try {
-      // In production, this would update a Config collection in MongoDB
-      // For now, just acknowledge the request
-      res.json({ 
-        message: 'Configuration update acknowledged',
-        note: 'In production, this would persist to database'
+      const section = req.params.section;
+      const defaults = getDefaults();
+      if (!(section in defaults)) {
+        return res.status(404).json({ message: 'Unknown configuration section' });
+      }
+
+      const doc = await Config.findOneAndUpdate(
+        { section },
+        { data: req.body, updatedBy: req.user?._id },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+
+      res.json({
+        message: 'Configuration updated and persisted to database',
+        section: doc.section,
+        updatedAt: doc.updatedAt,
       });
     } catch (error) {
       console.error('Error updating config:', error);
