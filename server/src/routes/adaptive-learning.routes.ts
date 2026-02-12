@@ -226,20 +226,94 @@ router.get('/profile', authMiddleware, async (req: AuthRequest, res: Response) =
       await profile.save();
     }
 
-    // Calculate days in onboarding
+    // Calculate days in onboarding and session count
     const daysInOnboarding = Math.floor(
       (Date.now() - profile.onboardingStartDate.getTime()) / (1000 * 60 * 60 * 24)
     );
-
-    res.json({
-      profile,
-      onboardingStatus: {
-        isOnboarding: daysInOnboarding < 7,
-        daysCompleted: Math.min(daysInOnboarding, 7),
-        daysRemaining: Math.max(0, 7 - daysInOnboarding),
-        progressPercent: Math.min(100, (daysInOnboarding / 7) * 100),
-      },
+    
+    // Get session count
+    const sessionCount = await LearningSession.countDocuments({
+      userId,
     });
+    
+    // Get average session duration
+    const sessions = await LearningSession.find({ userId }).select('totalDuration');
+    const avgSessionDuration = sessions.length > 0
+      ? Math.round(sessions.reduce((sum, s) => sum + (s.totalDuration || 0), 0) / sessions.length / 60)
+      : 25;
+
+    // Transform insights to array of strings
+    const insightsDiscovered = (profile.insights || []).map(i => i.insight);
+    
+    // Get top content preference
+    const topContentType = profile.discoveredPreferences?.preferredContentTypes?.[0];
+    const topTimeSlot = profile.discoveredPreferences?.optimalTimeSlots?.[0];
+    
+    // Format response to match frontend expectations
+    const formattedProfile = {
+      isOnboardingComplete: profile.onboardingComplete || daysInOnboarding >= 7,
+      onboardingProgress: {
+        daysCompleted: Math.min(daysInOnboarding, 7),
+        totalDays: 7,
+        sessionsCompleted: sessionCount,
+        insightsDiscovered: insightsDiscovered,
+      },
+      discoveredPreferences: {
+        contentPreferences: {
+          preferredFormats: (profile.discoveredPreferences?.preferredContentTypes || []).map(pt => ({
+            format: pt.type,
+            score: pt.effectivenessScore,
+          })),
+          readingSpeed: profile.discoveredPreferences?.idealDifficultyProgression || 'moderate',
+          attentionSpan: profile.attentionProfile?.averageFocusDuration 
+            ? (profile.attentionProfile.averageFocusDuration < 600 ? 'short' : 
+               profile.attentionProfile.averageFocusDuration < 1200 ? 'medium' : 'long')
+            : 'medium',
+          visualVsText: profile.discoveredPreferences?.visualComplexityTolerance === 'high' ? 75 : 
+                        profile.discoveredPreferences?.visualComplexityTolerance === 'low' ? 25 : 50,
+          detailLevel: profile.discoveredPreferences?.needsMoreExamples ? 'detailed' : 'concise',
+        },
+        learningPatterns: {
+          bestTimeOfDay: topTimeSlot?.timeOfDay || 'morning',
+          optimalSessionDuration: profile.discoveredPreferences?.optimalSessionDuration || avgSessionDuration,
+          breakFrequency: `Every ${profile.discoveredPreferences?.optimalBreakFrequency || 25} min`,
+          focusPatterns: (profile.discoveredPreferences?.optimalTimeSlots || []).map(slot => ({
+            environment: slot.timeOfDay,
+            score: slot.performanceScore,
+          })),
+        },
+        engagementIndicators: {
+          engagementLevel: profile.confidenceScores?.overallConfidence >= 70 ? 'high' :
+                          profile.confidenceScores?.overallConfidence >= 40 ? 'medium' : 'low',
+          motivationTriggers: [
+            profile.discoveredPreferences?.respondsToGamification ? 'Gamification' : null,
+            profile.discoveredPreferences?.needsFrequentFeedback ? 'Frequent Feedback' : null,
+            profile.discoveredPreferences?.prefersGuidedLearning ? 'Guided Learning' : null,
+          ].filter(Boolean),
+          stressIndicators: [
+            profile.emotionalThresholds?.frustrationTriggerPoint < 50 ? 'Low frustration tolerance' : null,
+            profile.attentionProfile?.distractionSensitivity === 'high' ? 'High distraction sensitivity' : null,
+          ].filter(Boolean),
+          copingStrategies: [
+            'Take regular breaks',
+            profile.discoveredPreferences?.needsFrequentFeedback ? 'Request frequent feedback' : null,
+          ].filter(Boolean),
+        },
+        accessibilityNeeds: {
+          preferredContrast: profile.discoveredPreferences?.visualComplexityTolerance === 'low' ? 'high' : 'normal',
+          fontSizePreference: 'medium',
+          animationSensitivity: profile.discoveredPreferences?.animationTolerance || 'moderate',
+        },
+      },
+      confidenceScores: profile.confidenceScores || {
+        overallConfidence: 0,
+        contentPreferenceConfidence: 0,
+        timingPreferenceConfidence: 0,
+        attentionPatternConfidence: 0,
+      },
+    };
+
+    res.json(formattedProfile);
   } catch (error) {
     console.error('Error fetching adaptive profile:', error);
     res.status(500).json({ message: 'Error fetching adaptive profile' });
@@ -297,8 +371,10 @@ router.get('/onboarding-status', authMiddleware, async (req: AuthRequest, res: R
 });
 
 function getOnboardingMessage(days: number, sessions: number): string {
-  if (days === 0) {
+  if (days === 0 && sessions === 0) {
     return "Welcome! Complete a few lessons today and we'll start learning how you learn best.";
+  } else if (sessions === 0) {
+    return "Start your first learning session to begin building your personalized profile!";
   } else if (days < 3) {
     return `Day ${days + 1} of discovery! We're gathering insight about your learning style.`;
   } else if (days < 7) {
@@ -378,13 +454,24 @@ async function updateAdaptiveProfile(userId: string, conditions: string[]): Prom
 
     if (sessions.length === 0) return;
 
-    // Call AI service to analyze sessions and build profile
-    const response = await axios.post(`${AI_SERVICE_URL}/api/adaptive/build-profile`, {
-      sessions: sessions.map(s => s.toObject()),
-      conditions,
-    });
+    let newProfileData: any;
+    let useBasicAnalysis = false;
 
-    const newProfileData = response.data;
+    try {
+      // Try to call AI service to analyze sessions and build profile
+      const response = await axios.post(`${AI_SERVICE_URL}/api/adaptive/build-profile`, {
+        sessions: sessions.map(s => s.toObject()),
+        conditions,
+      }, {
+        timeout: 5000, // 5 second timeout
+      });
+      newProfileData = response.data;
+    } catch (aiError) {
+      console.warn('AI service unavailable, using basic analysis:', aiError instanceof Error ? aiError.message : 'Unknown error');
+      useBasicAnalysis = true;
+      // Generate basic profile from sessions without AI
+      newProfileData = generateBasicProfile(sessions, conditions);
+    }
 
     // Update or create profile
     await AdaptiveProfile.findOneAndUpdate(
@@ -409,6 +496,125 @@ async function updateAdaptiveProfile(userId: string, conditions: string[]): Prom
   } catch (error) {
     console.error('Error updating adaptive profile:', error);
   }
+}
+
+/**
+ * Generate a basic profile when AI service is unavailable
+ */
+function generateBasicProfile(sessions: any[], conditions: string[]): any {
+  const avgDuration = sessions.reduce((sum, s) => sum + (s.totalDuration || 0), 0) / sessions.length;
+  const avgPerformance = sessions.reduce((sum, s) => sum + (s.overallPerformance || 0), 0) / sessions.length;
+  
+  // Analyze time of day performance
+  const timePerformance: Record<string, number[]> = {};
+  sessions.forEach(s => {
+    if (!timePerformance[s.timeOfDay]) {
+      timePerformance[s.timeOfDay] = [];
+    }
+    timePerformance[s.timeOfDay].push(s.overallPerformance || 50);
+  });
+  
+  const bestTime = Object.entries(timePerformance)
+    .map(([time, scores]) => ({ time, avgScore: scores.reduce((a, b) => a + b, 0) / scores.length }))
+    .sort((a, b) => b.avgScore - a.avgScore)[0];
+  
+  // Analyze content preferences
+  const contentStats: Record<string, { total: number; engagement: number }> = {};
+  sessions.forEach(s => {
+    s.contentInteractions?.forEach((interaction: any) => {
+      if (!contentStats[interaction.contentType]) {
+        contentStats[interaction.contentType] = { total: 0, engagement: 0 };
+      }
+      contentStats[interaction.contentType].total++;
+      const engagementValue = interaction.engagementLevel === 'high' ? 100 : 
+                             interaction.engagementLevel === 'medium' ? 60 : 30;
+      contentStats[interaction.contentType].engagement += engagementValue;
+    });
+  });
+  
+  const preferredContentTypes = Object.entries(contentStats)
+    .map(([type, stats]) => ({
+      type,
+      effectivenessScore: stats.total > 0 ? Math.round(stats.engagement / stats.total) : 50
+    }))
+    .sort((a, b) => b.effectivenessScore - a.effectivenessScore);
+  
+  // Generate insights
+  const insights = [];
+  
+  if (sessions.length >= 3) {
+    insights.push({
+      insight: `You've completed ${sessions.length} learning sessions!`,
+      confidence: Math.min(100, sessions.length * 10),
+      discoveredOn: new Date(),
+      basedOnSessions: sessions.length
+    });
+  }
+  
+  if (bestTime) {
+    insights.push({
+      insight: `You perform best during the ${bestTime.time} (${Math.round(bestTime.avgScore)}% avg performance)`,
+      confidence: Math.min(80, sessions.length * 8),
+      discoveredOn: new Date(),
+      basedOnSessions: sessions.length
+    });
+  }
+  
+  if (preferredContentTypes.length > 0) {
+    insights.push({
+      insight: `${preferredContentTypes[0].type.charAt(0).toUpperCase() + preferredContentTypes[0].type.slice(1)} content keeps you most engaged`,
+      confidence: Math.min(75, sessions.length * 7),
+      discoveredOn: new Date(),
+      basedOnSessions: sessions.length
+    });
+  }
+  
+  const sessionDurationMin = Math.round(avgDuration / 60);
+  insights.push({
+    insight: `Your average session length is ${sessionDurationMin} minutes`,
+    confidence: Math.min(70, sessions.length * 6),
+    discoveredOn: new Date(),
+    basedOnSessions: sessions.length
+  });
+  
+  // Add condition-specific insights
+  if (conditions.includes('ADHD') && sessionDurationMin < 20) {
+    insights.push({
+      insight: 'Shorter, focused sessions work well for you',
+      confidence: 65,
+      discoveredOn: new Date(),
+      basedOnSessions: sessions.length
+    });
+  }
+  
+  return {
+    discovered_preferences: {
+      optimalSessionDuration: sessionDurationMin || 25,
+      optimalBreakFrequency: sessionDurationMin || 25,
+      preferredContentTypes: preferredContentTypes.slice(0, 3),
+      optimalTimeSlots: bestTime ? [{
+        timeOfDay: bestTime.time,
+        performanceScore: Math.round(bestTime.avgScore)
+      }] : [],
+      idealDifficultyProgression: avgPerformance > 75 ? 'fast' : avgPerformance > 50 ? 'moderate' : 'slow',
+    },
+    attention_profile: {
+      averageFocusDuration: avgDuration || 900,
+      distractionSensitivity: 'medium'
+    },
+    emotional_thresholds: {
+      frustrationTriggerPoint: 70,
+      disengagementTriggerPoint: 30,
+      optimalChallengeLevel: 60
+    },
+    confidence_scores: {
+      overallConfidence: Math.min(100, sessions.length * 12),
+      contentPreferenceConfidence: Math.min(100, sessions.length * 10),
+      timingPreferenceConfidence: Math.min(100, sessions.length * 8),
+      attentionPatternConfidence: Math.min(100, sessions.length * 15)
+    },
+    insights
+  };
 }
 
 /**

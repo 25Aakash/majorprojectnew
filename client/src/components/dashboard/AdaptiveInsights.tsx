@@ -14,6 +14,7 @@ import {
   HeartIcon,
   BoltIcon,
   CheckCircleIcon,
+  ArrowPathIcon,
 } from '@heroicons/react/24/outline'
 
 interface ContentPreferences {
@@ -62,6 +63,7 @@ interface AdaptiveProfile {
 export function AdaptiveInsights() {
   const [profile, setProfile] = useState<AdaptiveProfile | null>(null)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [selectedTab, setSelectedTab] = useState<'overview' | 'patterns' | 'preferences'>('overview')
 
   useEffect(() => {
@@ -76,6 +78,21 @@ export function AdaptiveInsights() {
       console.error('Failed to fetch adaptive profile:', error)
     } finally {
       setLoading(false)
+    }
+  }
+  
+  const refreshProfile = async () => {
+    setRefreshing(true)
+    try {
+      // Trigger profile update on backend
+      await api.post('/adaptive-learning/profile/update')
+      // Refetch the updated profile
+      await fetchProfile()
+    } catch (error) {
+      console.error('Failed to refresh profile:', error)
+      alert('Failed to refresh profile. Please try again.')
+    } finally {
+      setRefreshing(false)
     }
   }
 
@@ -454,6 +471,14 @@ export function AdaptiveInsights() {
         <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
           <SparklesIcon className="h-7 w-7 text-primary-500" />
           Adaptive Learning Insights
+        <button
+          onClick={refreshProfile}
+          disabled={refreshing}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/30 rounded-lg transition-colors disabled:opacity-50"
+        >
+          <ArrowPathIcon className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+          {refreshing ? 'Refreshing...' : 'Refresh Profile'}
+        </button>
         </h2>
       </div>
 
